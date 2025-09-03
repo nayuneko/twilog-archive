@@ -7,4 +7,9 @@ const (
 
 	LogTypeTwilog   = 1
 	LogTypeXArchive = 2
+
+	DBFile  = "data/db/tweets.db"
+	JsonDir = "data/json"
+
+	JsonCalendar = "data/static/calendar.json"
 )

@@ -6,16 +6,13 @@ import (
 	"github.com/labstack/echo/middleware"
 	_ "github.com/mattn/go-sqlite3"
 	"log"
+	"twilog-archive/internal/constant"
 	"twilog-archive/internal/handler"
 )
 
 func main() {
-
-	// DBパスの設定
-	dbPath := "./data/db/tweets.db"
-
 	// SQLiteに接続
-	db, err := sqlx.Open("sqlite3", dbPath)
+	db, err := sqlx.Open("sqlite3", constant.DBFile)
 	if err != nil {
 		log.Fatal(err)
 	}

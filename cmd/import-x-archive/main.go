@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 	"log"
 	"os"
@@ -14,7 +15,12 @@ import (
 	"time"
 	"twilog-archive/internal/constant"
 	"twilog-archive/internal/model"
+	"twilog-archive/internal/utils"
 	"twilog-archive/internal/xdata"
+)
+
+const (
+	updateTwilog = false
 )
 
 type stmtMap map[string]*sql.Stmt
@@ -26,7 +32,7 @@ type insertData struct {
 	hashtags []model.Hashtags
 }
 
-func createStatement(db *sql.DB) (stmtMap, error) {
+func createStatement(db *sqlx.DB) (stmtMap, error) {
 	r := map[string]*sql.Stmt{}
 	for _, s := range []struct {
 		name string
@@ -66,9 +72,9 @@ DO UPDATE SET name = excluded.name, last_status_id = excluded.last_status_id
 	return r, nil
 }
 
-func insertAll(sm stmtMap, d *insertData) error {
+func insertAll(sm stmtMap, d *insertData) (int64, error) {
 	// tweets
-	_, err := sm["tweets"].Exec(
+	r, err := sm["tweets"].Exec(
 		d.tweet.ID,
 		d.tweet.CreatedAt.Format(time.RFC3339),
 		d.tweet.CreatedAt.In(time.Local).Format("20060102"),
@@ -81,8 +87,9 @@ func insertAll(sm stmtMap, d *insertData) error {
 		d.tweet.EmbedMediaURL,
 	)
 	if err != nil {
-		return fmt.Errorf("tweetsの追加に失敗: id = %d, %w", d.tweet.ID, err)
+		return 0, fmt.Errorf("tweetsの追加に失敗: id = %d, %w", d.tweet.ID, err)
 	}
+	rows, _ := r.RowsAffected()
 	//users
 	for _, u := range d.users {
 		if _, err := sm["users"].Exec(
@@ -90,7 +97,7 @@ func insertAll(sm stmtMap, d *insertData) error {
 			u.Name,
 			d.tweet.ID,
 		); err != nil {
-			return fmt.Errorf("usersの追加に失敗: id = %d, uid = %d, %w", d.tweet.ID, u.ID, err)
+			return 0, fmt.Errorf("usersの追加に失敗: id = %d, uid = %d, %w", d.tweet.ID, u.ID, err)
 		}
 	}
 	// media
@@ -101,7 +108,7 @@ func insertAll(sm stmtMap, d *insertData) error {
 			m.MediaURL,
 			m.MediaType,
 		); err != nil {
-			return fmt.Errorf("mediaの追加に失敗: id = %d, idx = %d, %w", d.tweet.ID, m.Index, err)
+			return 0, fmt.Errorf("mediaの追加に失敗: id = %d, idx = %d, %w", d.tweet.ID, m.Index, err)
 		}
 	}
 	// urls
@@ -113,7 +120,7 @@ func insertAll(sm stmtMap, d *insertData) error {
 			u.ExpandURL,
 			u.DisplayURL,
 		); err != nil {
-			return fmt.Errorf("urlの追加に失敗: id = %d, idx = %d, %w", d.tweet.ID, u.Index, err)
+			return 0, fmt.Errorf("urlの追加に失敗: id = %d, idx = %d, %w", d.tweet.ID, u.Index, err)
 		}
 	}
 	// hashtags
@@ -123,10 +130,10 @@ func insertAll(sm stmtMap, d *insertData) error {
 			h.Index,
 			h.Tag,
 		); err != nil {
-			return fmt.Errorf("hashtagの追加に失敗: id = %d, idx = %d, %w", d.tweet.ID, h.Index, err)
+			return 0, fmt.Errorf("hashtagの追加に失敗: id = %d, idx = %d, %w", d.tweet.ID, h.Index, err)
 		}
 	}
-	return nil
+	return rows, nil
 }
 
 func createTweets(t *xdata.Tweet) *model.Tweets {
@@ -239,53 +246,52 @@ func createHashtags(t *xdata.Tweet) []model.Hashtags {
 	return r
 }
 
-func importTweetsFromFile(db *sql.DB, path string) error {
+func importTweetsFromFile(db *sqlx.DB, path string) (int64, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer file.Close()
 
 	var tweets []xdata.TweetWrapper
 	if err := json.NewDecoder(file).Decode(&tweets); err != nil {
-		return err
+		return 0, err
 	}
 
 	sm, err := createStatement(db)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
+	var rows int64
 	for _, tw := range tweets {
 		tweets := createTweets(&tw.Tweet)
 		users := createUsers(&tw.Tweet, tweets)
 		media := createMedia(&tw.Tweet, tweets)
-		if err := insertAll(sm, &insertData{
+		if rows, err = insertAll(sm, &insertData{
 			tweets,
 			users,
 			media,
 			createUrls(&tw.Tweet),
 			createHashtags(&tw.Tweet),
 		}); err != nil {
-			return err
+			return 0, err
 		}
 		//_, _ = stmtFTS.Exec(t.IDStr, t.FullText)
 	}
-	return nil
+	return rows, nil
 }
 
 // importTweets jsonディレクトリにあるtweets.jsonをすべてインポート
 func importTweets() error {
 
-	db, err := sql.Open("sqlite3", "data/db/tweets.db")
+	db, err := sqlx.Open("sqlite3", constant.DBFile)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 
-	baseDir := "data/json"
-
-	entries, err := os.ReadDir(baseDir)
+	entries, err := os.ReadDir(constant.JsonDir)
 	if err != nil {
 		return err
 	}
@@ -294,7 +300,7 @@ func importTweets() error {
 	for _, entry := range entries {
 		name := entry.Name()
 		if !entry.IsDir() && filepath.Ext(name) == ".json" {
-			fullPath := filepath.Join(baseDir, name)
+			fullPath := filepath.Join(constant.JsonDir, name)
 			if name == "tweet-headers.json" {
 				/*
 					if d, err := loadTweetHeaderFromFile(fullPath); err != nil {
@@ -307,26 +313,35 @@ func importTweets() error {
 			} else if name == "like.json" {
 				continue
 			} else {
-				if err := importTweetsFromFile(db, fullPath); err != nil {
+				if rows, err := importTweetsFromFile(db, fullPath); err != nil {
 					return err
+				} else {
+					fmt.Printf("インポート完了: %s（%d件）\n", fullPath, rows)
 				}
 			}
-			fmt.Printf("インポート完了: %s\n", fullPath)
 		}
 	}
 	// 自分のIDを追加
 	if _, err := db.Exec("INSERT OR IGNORE INTO users VALUES (?, ?, 0)", constant.MyUserID, constant.MyName); err != nil {
 		return err
 	}
+	//
+
 	// twilogの時刻で更新
-	if err := updateTwilogDate(db); err != nil {
+	if _, err := utils.MakeCalendarData(db); err != nil {
 		return err
+	}
+	if updateTwilog {
+		// twilogの時刻で更新
+		if err := updateTwilogDate(db); err != nil {
+			return err
+		}
 	}
 	fmt.Println("インポート完了！")
 	return nil
 }
 
-func updateTwilogDate(db *sql.DB) error {
+func updateTwilogDate(db *sqlx.DB) error {
 	// ファイルパス・DBパスの設定
 	csvPath := "./data/csv/nayuneko-250707.csv"
 

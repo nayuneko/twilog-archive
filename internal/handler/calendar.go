@@ -6,12 +6,9 @@ import (
 	"github.com/labstack/echo"
 	"net/http"
 	"os"
-	"strconv"
-	"strings"
-	"twilog-archive/internal/repository"
+	"twilog-archive/internal/constant"
+	"twilog-archive/internal/utils"
 )
-
-type CalendarData map[string]map[string][]int
 
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
@@ -19,37 +16,21 @@ func fileExists(path string) bool {
 }
 
 func Calendar(db *sqlx.DB) echo.HandlerFunc {
-	cacheName := "./data/static/calendar.json"
 	return func(c echo.Context) error {
-		var calendarData CalendarData
-		if fileExists(cacheName) {
-			f, _ := os.Open(cacheName)
-			defer f.Close()
-			if err := json.NewDecoder(f).Decode(&calendarData); err != nil {
-				return err
-			}
-		} else {
-			dates, err := repository.AllDates(db)
-			if err != nil {
-				return err
-			}
-			cal := make(CalendarData)
-			for _, date := range dates {
-				y := date[:4]
-				m := strings.TrimLeft(date[4:6], "0")
-				d, _ := strconv.Atoi(date[6:8])
-				if _, ok := cal[y]; !ok {
-					cal[y] = make(map[string][]int)
+		calendarData, err := func() (utils.CalendarData, error) {
+			if fileExists(constant.JsonCalendar) {
+				var calendarData utils.CalendarData
+				f, _ := os.Open(constant.JsonCalendar)
+				defer f.Close()
+				if err := json.NewDecoder(f).Decode(&calendarData); err != nil {
+					return nil, err
 				}
-				if _, ok := cal[y][m]; !ok {
-					cal[y][m] = make([]int, 0)
-				}
-				cal[y][m] = append(cal[y][m], d)
+				return calendarData, nil
 			}
-			f, _ := os.Create(cacheName)
-			defer f.Close()
-			json.NewEncoder(f).Encode(cal)
-			calendarData = cal
+			return utils.MakeCalendarData(db)
+		}()
+		if err != nil {
+			return err
 		}
 		return c.JSON(http.StatusOK, calendarData)
 	}
