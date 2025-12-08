@@ -5,6 +5,9 @@ JSON_FILES := $(patsubst data/tweets/%.js,data/json/%.json,$(JS_FILES))
 
 pre-parse: $(JSON_FILES)
 
+run: bin/api
+	bin/api
+
 data/json/%.json: data/tweets/%.js
 	node tools/tweets_parser.js $< $@
 
@@ -20,9 +23,20 @@ bin/import-x-archive: cmd/import-x-archive/main.go
 clean:
 	rm -f bin/*
 
+clean-js:
+	rm -f data/tweets/*.js
+
 clean-json:
 	rm -f data/json/*.json
 
-import: clean-json bin/extract-archive pre-parse bin/import-x-archive
-	./bin/extract-archive
+clean-data: clean-js clean-json
+
+extract-archive: bin/extract-archive
+	./bin/extract-archive $(ZIP)
+
+import-x-archive: bin/import-x-archive
 	./bin/import-x-archive
+
+import: extract-archive pre-parse import-x-archive
+
+clean-import: clean-data import

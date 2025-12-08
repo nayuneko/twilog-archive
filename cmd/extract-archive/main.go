@@ -11,7 +11,6 @@ import (
 )
 
 const (
-	zipPath  = `/Volumes/home/twitter-2025-09-02-31664232fed404b8a51511a2281218889ed09926e92ef278f526b21d708c4688.zip`
 	outDir   = `data/tweets/`
 	parallel = 2
 )
@@ -33,7 +32,7 @@ func shouldPick(zipName string) bool {
 	return reTweetsPart.MatchString(base)
 }
 
-func extractSelected(ctx context.Context) error {
+func extractSelected(ctx context.Context, zipPath string) error {
 	f, err := os.Open(zipPath)
 	if err != nil {
 		return err
@@ -127,7 +126,11 @@ func extractOne(zf *zip.File) error {
 }
 
 func main() {
-	if err := extractSelected(context.Background()); err != nil {
+	if len(os.Args) < 2 {
+		fmt.Println("usage: extract-archive ZIP_PATH")
+		os.Exit(1)
+	}
+	if err := extractSelected(context.Background(), os.Args[1]); err != nil {
 		fmt.Println("ERROR:", err)
 	}
 }
