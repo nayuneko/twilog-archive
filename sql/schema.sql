@@ -28,7 +28,7 @@ CREATE TABLE media (
     media_url TEXT NOT NULL, -- 画像の直URL
     type TEXT, -- photo, video, animated_gif
     PRIMARY KEY (tweet_id, media_index),
-    FOREIGN KEY (tweet_id) REFERENCES tweets(tweet_id) ON DELETE CASCADE
+    FOREIGN KEY (tweet_id) REFERENCES tweets(id) ON DELETE CASCADE
 );
 
 -- URL
@@ -39,7 +39,7 @@ CREATE TABLE urls (
     expanded_url TEXT,            -- 展開後URL
     display_url TEXT,             -- 表示用（例: example.com/...）
     PRIMARY KEY (tweet_id, url_index),
-    FOREIGN KEY (tweet_id) REFERENCES tweets(tweet_id) ON DELETE CASCADE
+    FOREIGN KEY (tweet_id) REFERENCES tweets(id) ON DELETE CASCADE
 );
 
 -- ハッシュタグ
@@ -48,7 +48,7 @@ CREATE TABLE hashtags (
     tag_index INTEGER NOT NULL,
     tag TEXT NOT NULL,
     PRIMARY KEY (tweet_id, tag_index),
-    FOREIGN KEY (tweet_id) REFERENCES tweets(tweet_id) ON DELETE CASCADE
+    FOREIGN KEY (tweet_id) REFERENCES tweets(id) ON DELETE CASCADE
 );
 
 CREATE INDEX idx_created_date_id ON tweets (created_date, id);
