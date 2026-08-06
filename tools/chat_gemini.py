@@ -103,16 +103,50 @@ def mcp_tools_to_gemini_declarations(mcp_tools):
         declarations.append(dec)
     return declarations
 
-def normalize_model_name(model):
-    aliases = {
-        "gemini-1.5-pro": "gemini-1.5-pro-latest",
-        "gemini-1.5-flash": "gemini-1.5-flash-latest",
-        "gemini-2.0-pro": "gemini-2.0-pro-exp-02-05",
-    }
-    return aliases.get(model, model)
+def list_available_models(api_key):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+    req = urllib.request.Request(url)
+    try:
+        with urllib.request.urlopen(req) as res:
+            data = json.loads(res.read().decode("utf-8"))
+            models = []
+            for m in data.get("models", []):
+                name = m.get("name", "").replace("models/", "")
+                methods = m.get("supportedGenerationMethods", [])
+                if "generateContent" in methods:
+                    models.append(name)
+            return models
+    except Exception as e:
+        return []
 
-def call_gemini_api(api_key, contents, tools_declarations, model="gemini-2.0-flash", max_retries=3):
-    real_model = normalize_model_name(model)
+def normalize_model_name(model, available_models):
+    if not available_models:
+        return model
+    
+    if model in available_models:
+        return model
+    
+    # プレフィックスで検索
+    for am in available_models:
+        if am.startswith(model):
+            return am
+
+    # gemini-1.5-pro の場合は候補を探す
+    if "pro" in model:
+        for am in available_models:
+            if "pro" in am:
+                return am
+                
+    # デフォルトフォールバック
+    if "gemini-2.0-flash" in available_models:
+        return "gemini-2.0-flash"
+    if "gemini-1.5-flash" in available_models:
+        return "gemini-1.5-flash"
+    
+    return available_models[0] if available_models else model
+
+def call_gemini_api(api_key, contents, tools_declarations, model="gemini-2.0-flash", max_retries=3, available_models=None):
+    real_model = normalize_model_name(model, available_models)
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{real_model}:generateContent?key={api_key}"
     payload = {
         "contents": contents,
@@ -155,7 +189,7 @@ def call_gemini_api(api_key, contents, tools_declarations, model="gemini-2.0-fla
 
 def main():
     api_key = os.environ.get("GEMINI_API_KEY")
-    default_model = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+    user_requested_model = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
     if not api_key:
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         print("⚠️  GEMINI_API_KEY 環境変数が設定されていません。")
@@ -165,6 +199,9 @@ def main():
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         sys.exit(1)
 
+    available_models = list_available_models(api_key)
+    target_model = normalize_model_name(user_requested_model, available_models)
+
     print("🚀 MCP サーバーを起動中...")
     mcp_client = MCPServerClient(MCP_SERVER_BIN)
     
@@ -172,7 +209,9 @@ def main():
         mcp_tools = mcp_client.list_tools()
         gemini_tools = mcp_tools_to_gemini_declarations(mcp_tools)
         
-        print("✨ Gemini 2.0 Flash 連携対話チャット (Twilog Archive MCP)")
+        print(f"✨ Gemini ({target_model}) 連携対話チャット (Twilog Archive MCP)")
+        if user_requested_model != target_model:
+            print(f"ℹ️  '{user_requested_model}' はこのAPIキーで未検出のため、'{target_model}' を使用します。")
         print("ツイートに関する質問を入力してください（終了するには 'exit' や 'quit' と入力）。")
         print("------------------------------------------------------------")
 
@@ -197,7 +236,7 @@ def main():
             })
 
             # Gemini API 呼出
-            res = call_gemini_api(api_key, contents_history, gemini_tools, model=default_model)
+            res = call_gemini_api(api_key, contents_history, gemini_tools, model=target_model, available_models=available_models)
             candidates = res.get("candidates", [])
             if not candidates:
                 print("🤖 Gemini: 応答が得られませんでした。")
@@ -235,7 +274,7 @@ def main():
                 })
 
                 # 再度 Gemini を呼び出して最終回答を生成
-                res_after_tool = call_gemini_api(api_key, contents_history, gemini_tools, model=default_model)
+                res_after_tool = call_gemini_api(api_key, contents_history, gemini_tools, model=target_model, available_models=available_models)
                 final_parts = res_after_tool["candidates"][0]["content"].get("parts", [])
                 final_text = "".join(p.get("text", "") for p in final_parts)
                 
