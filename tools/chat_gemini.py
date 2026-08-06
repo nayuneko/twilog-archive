@@ -146,6 +146,7 @@ def call_gemini_api(api_key, contents, tools_declarations, model="gemini-2.0-fla
 
 def main():
     api_key = os.environ.get("GEMINI_API_KEY")
+    default_model = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
     if not api_key:
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         print("⚠️  GEMINI_API_KEY 環境変数が設定されていません。")
@@ -187,7 +188,7 @@ def main():
             })
 
             # Gemini API 呼出
-            res = call_gemini_api(api_key, contents_history, gemini_tools)
+            res = call_gemini_api(api_key, contents_history, gemini_tools, model=default_model)
             candidates = res.get("candidates", [])
             if not candidates:
                 print("🤖 Gemini: 応答が得られませんでした。")
@@ -225,7 +226,7 @@ def main():
                 })
 
                 # 再度 Gemini を呼び出して最終回答を生成
-                res_after_tool = call_gemini_api(api_key, contents_history, gemini_tools)
+                res_after_tool = call_gemini_api(api_key, contents_history, gemini_tools, model=default_model)
                 final_parts = res_after_tool["candidates"][0]["content"].get("parts", [])
                 final_text = "".join(p.get("text", "") for p in final_parts)
                 
