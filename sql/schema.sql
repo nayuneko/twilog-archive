@@ -53,10 +53,22 @@ CREATE TABLE hashtags (
 
 CREATE INDEX idx_created_date_id ON tweets (created_date, id);
 
--- FTS5全文検索用テーブル
+-- FTS5全文検索用テーブル (Trigram)
 CREATE VIRTUAL TABLE tweets_fts USING fts5(
-  id UNINDEXED,
   full_text,
-  content='',
-  tokenize='unicode61'
+  content='tweets',
+  content_rowid='id',
+  tokenize='trigram'
 );
+
+-- 自動同期トリガー
+CREATE TRIGGER IF NOT EXISTS tweets_ai AFTER INSERT ON tweets BEGIN
+  INSERT INTO tweets_fts(rowid, full_text) VALUES (new.id, new.full_text);
+END;
+CREATE TRIGGER IF NOT EXISTS tweets_ad AFTER DELETE ON tweets BEGIN
+  INSERT INTO tweets_fts(tweets_fts, rowid, full_text) VALUES('delete', old.id, old.full_text);
+END;
+CREATE TRIGGER IF NOT EXISTS tweets_au AFTER UPDATE ON tweets BEGIN
+  INSERT INTO tweets_fts(tweets_fts, rowid, full_text) VALUES('delete', old.id, old.full_text);
+  INSERT INTO tweets_fts(rowid, full_text) VALUES (new.id, new.full_text);
+END;

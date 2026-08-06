@@ -51,7 +51,7 @@ func main() {
 
 	// Tool 1: search_tweets
 	searchTool := mcp.NewTool("search_tweets",
-		mcp.WithDescription("Twilog/Xアーカイブの過去ツイートをキーワードで全文検索します"),
+		mcp.WithDescription("Twilog/Xアーカイブの過去ツイートをキーワードで全文検索します (最新50件まで取得)"),
 		mcp.WithString("query", mcp.Required(), mcp.Description("検索キーワード")),
 	)
 	s.AddTool(searchTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
