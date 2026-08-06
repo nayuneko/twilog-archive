@@ -103,8 +103,17 @@ def mcp_tools_to_gemini_declarations(mcp_tools):
         declarations.append(dec)
     return declarations
 
+def normalize_model_name(model):
+    aliases = {
+        "gemini-1.5-pro": "gemini-1.5-pro-latest",
+        "gemini-1.5-flash": "gemini-1.5-flash-latest",
+        "gemini-2.0-pro": "gemini-2.0-pro-exp-02-05",
+    }
+    return aliases.get(model, model)
+
 def call_gemini_api(api_key, contents, tools_declarations, model="gemini-2.0-flash", max_retries=3):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    real_model = normalize_model_name(model)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{real_model}:generateContent?key={api_key}"
     payload = {
         "contents": contents,
         "tools": [{"functionDeclarations": tools_declarations}],
