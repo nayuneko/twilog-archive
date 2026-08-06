@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "twilog-archive": {
+      "command": "/Users/nayu/development/twilog-archive/bin/mcp-server",
+      "args": []
+    }
+  }
+}

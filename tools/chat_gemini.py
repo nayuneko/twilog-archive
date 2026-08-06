@@ -113,7 +113,8 @@ def list_available_models(api_key):
             for m in data.get("models", []):
                 name = m.get("name", "").replace("models/", "")
                 methods = m.get("supportedGenerationMethods", [])
-                if "generateContent" in methods:
+                # 非推奨モデル (2.5や旧版) を除外し 2.0 系の現行モデルに絞る
+                if "generateContent" in methods and not ("2.5" in name or "1.5" in name):
                     models.append(name)
             return models
     except Exception as e:
@@ -121,37 +122,15 @@ def list_available_models(api_key):
         return []
 
 def normalize_model_name(model, available_models):
-    # もしAPIキーでモデル一覧が取得できた場合
     if available_models:
-        # 完全一致
         if model in available_models:
             return model
-        
-        # 部分一致検索
         for am in available_models:
             if model in am or am in model:
                 return am
-        
-        # Pro系を求めている場合
-        if "pro" in model:
-            for am in available_models:
-                if "pro" in am:
-                    return am
-
-        # Flash系
-        for am in available_models:
-            if "2.0-flash" in am or "1.5-flash" in am:
-                return am
-        
         return available_models[0]
 
-    # モデル一覧取得が失敗した場合のハードコードエイリアス
-    hardcoded_map = {
-        "gemini-1.5-pro": "gemini-1.5-pro-002",
-        "gemini-2.0-pro": "gemini-2.0-pro-exp-02-05",
-        "gemini-1.5-flash": "gemini-1.5-flash-002",
-    }
-    return hardcoded_map.get(model, "gemini-2.0-flash")
+    return "gemini-2.0-flash"
 
 def call_gemini_api(api_key, contents, tools_declarations, model="gemini-2.0-flash", max_retries=3, available_models=None):
     real_model = normalize_model_name(model, available_models)
@@ -181,18 +160,40 @@ def call_gemini_api(api_key, contents, tools_declarations, model="gemini-2.0-fla
         except urllib.error.HTTPError as e:
             err_body = e.read().decode("utf-8")
             if e.code == 429:
-                wait_sec = attempt * 3
+                # APIエラーのJSONから retryDelay や limit 情報をパース
+                suggested_wait = 3
+                is_daily_limit = "limit: 0" in err_body or "PerDay" in err_body
+                try:
+                    err_json = json.loads(err_body)
+                    for detail in err_json.get("error", {}).get("details", []):
+                        if "retryDelay" in detail:
+                            delay_str = detail["retryDelay"].replace("s", "")
+                            suggested_wait = int(float(delay_str)) + 1
+                except Exception:
+                    pass
+
+                if is_daily_limit:
+                    print(f"⚠️  {real_model} の本日の無料枠（1日上限）に達しました (limit: 0)。")
+                    if available_models:
+                        fallback_model = None
+                        for candidate in available_models:
+                            if candidate != real_model:
+                                fallback_model = candidate
+                                break
+                        if fallback_model:
+                            print(f"🔄 別モデル '{fallback_model}' に自動切り替えて試行します...")
+                            return call_gemini_api(api_key, contents, tools_declarations, model=fallback_model, max_retries=max_retries, available_models=available_models)
+
+                wait_sec = min(suggested_wait, 10)
                 if attempt < max_retries:
-                    print(f"⏳ レート制限 (429 Too Many Requests) に達しました。{wait_sec}秒待機して再試行します ({attempt}/{max_retries})...")
+                    print(f"⏳ レート制限に達しました。{wait_sec}秒待機して再試行します ({attempt}/{max_retries})...")
                     time.sleep(wait_sec)
                     continue
-                else:
-                    # 2.0-flash が上限に達した場合は 1.5-flash や 2.0-flash-lite をフォールバック試行
-                    if model != "gemini-1.5-flash":
-                        print("🔄 gemini-1.5-flash にフォールバックして再試行します...")
-                        return call_gemini_api(api_key, contents, tools_declarations, model="gemini-1.5-flash", max_retries=2)
-            
-            print(f"\n❌ Gemini API エラー: {e.code}\n{err_body}")
+
+            print(f"\n❌ Gemini API エラー ({e.code})")
+            print(f"  ・使用モデル: {real_model}")
+            print(f"  ・アクセスURL: {url}")
+            print(f"  ・エラー内容: {err_body}")
             sys.exit(1)
 
 def main():

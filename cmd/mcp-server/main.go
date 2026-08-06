@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/jmoiron/sqlx"
@@ -16,8 +18,24 @@ import (
 	"twilog-archive/internal/repository"
 )
 
+func resolveDBPath() string {
+	if dbPath := os.Getenv("DB_PATH"); dbPath != "" {
+		return dbPath
+	}
+	execPath, err := os.Executable()
+	if err == nil {
+		projectDir := filepath.Dir(filepath.Dir(execPath))
+		candidate := filepath.Join(projectDir, constant.DBFile)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	return constant.DBFile
+}
+
 func main() {
-	db, err := sqlx.Open("sqlite3", constant.DBFile+"?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)")
+	dbPath := resolveDBPath()
+	db, err := sqlx.Open("sqlite3", dbPath+"?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)")
 	if err != nil {
 		log.Fatalf("Failed to open DB: %v", err)
 	}
