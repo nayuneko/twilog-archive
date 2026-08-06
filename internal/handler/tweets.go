@@ -42,15 +42,15 @@ func TweetsLatest(db *sqlx.DB) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		req := new(form.Pagination)
 		if err := c.Bind(req); err != nil {
-			return c.String(http.StatusBadRequest, "Request is failed: "+err.Error())
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request: " + err.Error()})
 		}
 		tweets, err := repository.Latest(db, req.LastID)
 		if err != nil {
-			return err
+			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to fetch tweets: "+err.Error())
 		}
 		res, err := makeTweetResponse(db, tweets)
 		if err != nil {
-			return err
+			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to format response: "+err.Error())
 		}
 		return c.JSON(http.StatusOK, res)
 	}
@@ -62,11 +62,11 @@ func TweetsDates(db *sqlx.DB) echo.HandlerFunc {
 		date := c.Param("date")
 		tweets, err := repository.FindByDates(db, date)
 		if err != nil {
-			return err
+			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to fetch tweets by date: "+err.Error())
 		}
 		res, err := makeTweetResponse(db, tweets)
 		if err != nil {
-			return err
+			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to format response: "+err.Error())
 		}
 		return c.JSON(http.StatusOK, res)
 	}
@@ -74,23 +74,17 @@ func TweetsDates(db *sqlx.DB) echo.HandlerFunc {
 
 func TweetsSearch(db *sqlx.DB) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		/*
-			req := new(SearchRequest)
-			if err := c.Bind(req); err != nil {
-				return c.String(http.StatusBadRequest, "Request is failed: "+err.Error())
-			}
-		*/
 		q := c.QueryParam("q")
 		req := &form.SearchRequest{
 			SearchWord: q,
 		}
 		tweets, err := repository.Search(db, req)
 		if err != nil {
-			return err
+			return echo.NewHTTPError(http.StatusInternalServerError, "Search failed: "+err.Error())
 		}
 		res, err := makeTweetResponse(db, tweets)
 		if err != nil {
-			return err
+			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to format response: "+err.Error())
 		}
 		return c.JSON(http.StatusOK, res)
 	}
