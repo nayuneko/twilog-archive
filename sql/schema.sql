@@ -28,7 +28,7 @@ CREATE TABLE media (
     media_url TEXT NOT NULL, -- 画像の直URL
     type TEXT, -- photo, video, animated_gif
     PRIMARY KEY (tweet_id, media_index),
-    FOREIGN KEY (tweet_id) REFERENCES tweets(tweet_id) ON DELETE CASCADE
+    FOREIGN KEY (tweet_id) REFERENCES tweets(id) ON DELETE CASCADE
 );
 
 -- URL
@@ -39,7 +39,7 @@ CREATE TABLE urls (
     expanded_url TEXT,            -- 展開後URL
     display_url TEXT,             -- 表示用（例: example.com/...）
     PRIMARY KEY (tweet_id, url_index),
-    FOREIGN KEY (tweet_id) REFERENCES tweets(tweet_id) ON DELETE CASCADE
+    FOREIGN KEY (tweet_id) REFERENCES tweets(id) ON DELETE CASCADE
 );
 
 -- ハッシュタグ
@@ -48,15 +48,27 @@ CREATE TABLE hashtags (
     tag_index INTEGER NOT NULL,
     tag TEXT NOT NULL,
     PRIMARY KEY (tweet_id, tag_index),
-    FOREIGN KEY (tweet_id) REFERENCES tweets(tweet_id) ON DELETE CASCADE
+    FOREIGN KEY (tweet_id) REFERENCES tweets(id) ON DELETE CASCADE
 );
 
 CREATE INDEX idx_created_date_id ON tweets (created_date, id);
 
--- FTS5全文検索用テーブル
+-- FTS5全文検索用テーブル (Trigram)
 CREATE VIRTUAL TABLE tweets_fts USING fts5(
-  id UNINDEXED,
   full_text,
-  content='',
-  tokenize='unicode61'
+  content='tweets',
+  content_rowid='id',
+  tokenize='trigram'
 );
+
+-- 自動同期トリガー
+CREATE TRIGGER IF NOT EXISTS tweets_ai AFTER INSERT ON tweets BEGIN
+  INSERT INTO tweets_fts(rowid, full_text) VALUES (new.id, new.full_text);
+END;
+CREATE TRIGGER IF NOT EXISTS tweets_ad AFTER DELETE ON tweets BEGIN
+  INSERT INTO tweets_fts(tweets_fts, rowid, full_text) VALUES('delete', old.id, old.full_text);
+END;
+CREATE TRIGGER IF NOT EXISTS tweets_au AFTER UPDATE ON tweets BEGIN
+  INSERT INTO tweets_fts(tweets_fts, rowid, full_text) VALUES('delete', old.id, old.full_text);
+  INSERT INTO tweets_fts(rowid, full_text) VALUES (new.id, new.full_text);
+END;

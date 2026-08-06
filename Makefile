@@ -20,6 +20,12 @@ bin/extract-archive: cmd/extract-archive/main.go
 bin/import-x-archive: cmd/import-x-archive/main.go
 	go build -o $@ $^
 
+bin/mcp-server: cmd/mcp-server/main.go
+	go build -o $@ $^
+
+chat-gemini: bin/mcp-server
+	python3 tools/chat_gemini.py
+
 clean:
 	rm -f bin/*
 

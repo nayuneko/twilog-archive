@@ -1,35 +1,52 @@
 package repository
 
 import (
-	"fmt"
+	"strings"
+
 	"github.com/jmoiron/sqlx"
 	"twilog-archive/internal/form"
 	"twilog-archive/internal/model"
 )
 
 func Search(db *sqlx.DB, req *form.SearchRequest) ([]model.TweetsWithName, error) {
-	params := []interface{}{fmt.Sprintf("%%%s%%", req.SearchWord)}
-	/*
-			q := `SELECT * FROM tweets
-		JOIN (SELECT id FROM tweets WHERE match text against (? in boolean mode)`
-	*/
-	q := "SELECT t.*, u.name FROM tweets t left join users u on t.user_id = u.id"
-	q += " WHERE full_text like ?"
-	if req.Pagination.LastID != nil {
-		q += " AND id < ?"
-		params = append(params, *req.Pagination.LastID)
+	word := strings.TrimSpace(req.SearchWord)
+	if word == "" {
+		return nil, nil
 	}
-	/*
-			q += ` ORDER BY id DESC LIMIT 100) t ON t.id = s.id
-		ORDER BY id DESC`
-	*/
-	q += ` ORDER BY id DESC`
+
+	// 1. FTS5 Trigram MATCH 検索
+	ftsQuery := "\"" + strings.ReplaceAll(word, "\"", "\"\"") + "\""
+	qFTS := `SELECT t.*, u.name 
+	         FROM tweets t 
+	         JOIN tweets_fts f ON t.id = f.rowid 
+	         LEFT JOIN users u ON t.user_id = u.id 
+	         WHERE tweets_fts MATCH ?`
+	paramsFTS := []interface{}{ftsQuery}
+
+	if req.Pagination.LastID != nil {
+		qFTS += " AND t.id < ?"
+		paramsFTS = append(paramsFTS, *req.Pagination.LastID)
+	}
+	qFTS += " ORDER BY t.id DESC LIMIT 50"
+
 	var result []model.TweetsWithName
-	if err := db.Select(&result, q, params...); err != nil {
+	if err := db.Select(&result, qFTS, paramsFTS...); err == nil {
+		return result, nil
+	}
+
+	// 2. フォールバック: 通常の LIKE 検索
+	paramsLIKE := []interface{}{"%" + word + "%"}
+	qLIKE := "SELECT t.*, u.name FROM tweets t LEFT JOIN users u ON t.user_id = u.id WHERE full_text LIKE ?"
+	if req.Pagination.LastID != nil {
+		qLIKE += " AND t.id < ?"
+		paramsLIKE = append(paramsLIKE, *req.Pagination.LastID)
+	}
+	qLIKE += " ORDER BY t.id DESC LIMIT 50"
+
+	if err := db.Select(&result, qLIKE, paramsLIKE...); err != nil {
 		return nil, err
 	}
 	return result, nil
-	//	return getTweets(db, q, params...)
 }
 
 func Latest(db *sqlx.DB, lastID *string) ([]model.TweetsWithName, error) {
