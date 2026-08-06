@@ -20,6 +20,9 @@ bin/extract-archive: cmd/extract-archive/main.go
 bin/import-x-archive: cmd/import-x-archive/main.go
 	go build -o $@ $^
 
+bin/mcp-server: cmd/mcp-server/main.go
+	go build -o $@ $^
+
 clean:
 	rm -f bin/*
 
