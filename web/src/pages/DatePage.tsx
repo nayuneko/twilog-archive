@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom'
-import type { TweetResponse } from '../types/tweet'
-import Layout from "../components/Layout.tsx";
-import TweetList from "../components/TweetList.tsx";
+import { useParams, Link } from 'react-router-dom';
+import type { TweetResponse } from '../types/tweet';
+import Layout from "../components/Layout";
+import TweetList from "../components/TweetList";
 
 function DatePage() {
-    const { date } = useParams()
+    const { date } = useParams();
     const [tweets, setTweets] = useState<TweetResponse[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        if (!date) return;
+        setLoading(true);
         fetch(`/api/tweets/dates/${date}`)
             .then((res) => res.json())
             .then((data) => {
@@ -20,11 +22,11 @@ function DatePage() {
                 console.error('Error fetching tweets:', err);
                 setLoading(false);
             });
-    }, []);
+    }, [date]);
 
-    const y = parseInt(date!.slice(0, 4), 10);
-    const m = parseInt(date!.slice(4, 6), 10) - 1;
-    const d = parseInt(date!.slice(6, 8), 10);
+    const y = parseInt(date?.slice(0, 4) || '2000', 10);
+    const m = parseInt(date?.slice(4, 6) || '01', 10) - 1;
+    const d = parseInt(date?.slice(6, 8) || '01', 10);
     const baseDate = new Date(y, m, d);
 
     // 前日
@@ -44,10 +46,10 @@ function DatePage() {
 
     const DateNavigator = () => (
         <div className="flex justify-between items-center w-full my-4">
-            <a href={`/dates/${formatToYYYYMMDD(prevDate)}`} className="text-blue-500 hover:underline pl-1.5">＜前日</a>
-            <a href={`/dates/${formatToYYYYMMDD(nextDate)}`} className="text-blue-500 hover:underline pr-1.5">翌日＞</a>
+            <Link to={`/dates/${formatToYYYYMMDD(prevDate)}`} className="text-blue-500 hover:underline pl-1.5">＜前日</Link>
+            <Link to={`/dates/${formatToYYYYMMDD(nextDate)}`} className="text-blue-500 hover:underline pr-1.5">翌日＞</Link>
         </div>
-    )
+    );
 
     return (
         <Layout date={date}>
