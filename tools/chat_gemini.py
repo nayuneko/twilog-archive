@@ -103,8 +103,8 @@ def mcp_tools_to_gemini_declarations(mcp_tools):
         declarations.append(dec)
     return declarations
 
-def call_gemini_api(api_key, contents, tools_declarations):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+def call_gemini_api(api_key, contents, tools_declarations, model="gemini-2.0-flash", max_retries=3):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     payload = {
         "contents": contents,
         "tools": [{"functionDeclarations": tools_declarations}],
@@ -115,19 +115,34 @@ def call_gemini_api(api_key, contents, tools_declarations):
         }
     }
 
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"}
-    )
+    import time
 
-    try:
-        with urllib.request.urlopen(req) as res:
-            return json.loads(res.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        err_body = e.read().decode("utf-8")
-        print(f"\n❌ Gemini API エラー: {e.code}\n{err_body}")
-        sys.exit(1)
+    for attempt in range(1, max_retries + 1):
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+
+        try:
+            with urllib.request.urlopen(req) as res:
+                return json.loads(res.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode("utf-8")
+            if e.code == 429:
+                wait_sec = attempt * 3
+                if attempt < max_retries:
+                    print(f"⏳ レート制限 (429 Too Many Requests) に達しました。{wait_sec}秒待機して再試行します ({attempt}/{max_retries})...")
+                    time.sleep(wait_sec)
+                    continue
+                else:
+                    # 2.0-flash が上限に達した場合は 1.5-flash や 2.0-flash-lite をフォールバック試行
+                    if model != "gemini-1.5-flash":
+                        print("🔄 gemini-1.5-flash にフォールバックして再試行します...")
+                        return call_gemini_api(api_key, contents, tools_declarations, model="gemini-1.5-flash", max_retries=2)
+            
+            print(f"\n❌ Gemini API エラー: {e.code}\n{err_body}")
+            sys.exit(1)
 
 def main():
     api_key = os.environ.get("GEMINI_API_KEY")
