@@ -19,13 +19,14 @@ func Calendar(db *sqlx.DB) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		calendarData, err := func() (utils.CalendarData, error) {
 			if fileExists(constant.JsonCalendar) {
-				var calendarData utils.CalendarData
-				f, _ := os.Open(constant.JsonCalendar)
-				defer f.Close()
-				if err := json.NewDecoder(f).Decode(&calendarData); err != nil {
-					return nil, err
+				f, err := os.Open(constant.JsonCalendar)
+				if err == nil {
+					defer f.Close()
+					var calendarData utils.CalendarData
+					if err := json.NewDecoder(f).Decode(&calendarData); err == nil {
+						return calendarData, nil
+					}
 				}
-				return calendarData, nil
 			}
 			return utils.MakeCalendarData(db)
 		}()

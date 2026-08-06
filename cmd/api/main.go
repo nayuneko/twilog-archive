@@ -12,7 +12,7 @@ import (
 
 func main() {
 	// SQLiteに接続
-	db, err := sqlx.Open("sqlite3", constant.DBFile)
+	db, err := sqlx.Open("sqlite3", constant.DBFile+"?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -23,6 +23,7 @@ func main() {
 
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
+	e.Use(middleware.CORS())
 
 	// ルーティング
 	m := e.Group("/api/tweets")

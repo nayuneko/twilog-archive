@@ -30,8 +30,15 @@ func Search(db *sqlx.DB, req *form.SearchRequest) ([]model.TweetsWithName, error
 	qFTS += " ORDER BY t.id DESC LIMIT 50"
 
 	var result []model.TweetsWithName
-	if err := db.Select(&result, qFTS, paramsFTS...); err == nil {
+	err := db.Select(&result, qFTS, paramsFTS...)
+	if err == nil {
 		return result, nil
+	}
+
+	// テーブル不在 / FTS5未サポートの場合のみ LIKE 検索にフォールバック
+	errMsg := err.Error()
+	if !strings.Contains(errMsg, "no such table") && !strings.Contains(errMsg, "fts5") {
+		return nil, err
 	}
 
 	// 2. フォールバック: 通常の LIKE 検索

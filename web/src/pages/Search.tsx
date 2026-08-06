@@ -13,10 +13,14 @@ function Search() {
 
     useEffect(() => {
         const fetchResults = () => {
-            if (!query) return;
-            setLoading(true)
+            if (!query) {
+                setTweets([]);
+                setLoading(false);
+                return;
+            }
+            setLoading(true);
             fetch(`/api/tweets/search/?q=${encodeURIComponent(query)}`)
-                .then((res) =>  res.json() )
+                .then((res) => res.json())
                 .then((data) => {
                     setTweets(data);
                     setLoading(false);

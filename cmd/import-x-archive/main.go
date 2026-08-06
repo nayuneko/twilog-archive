@@ -4,15 +4,19 @@ import (
 	"database/sql"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"github.com/jmoiron/sqlx"
-	_ "github.com/mattn/go-sqlite3"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/jmoiron/sqlx"
+	_ "github.com/mattn/go-sqlite3"
+
 	"twilog-archive/internal/constant"
 	"twilog-archive/internal/model"
 	"twilog-archive/internal/utils"
@@ -30,46 +34,6 @@ type insertData struct {
 	media    []model.Media
 	urls     []model.URLs
 	hashtags []model.Hashtags
-}
-
-func createStatement(db *sqlx.DB) (stmtMap, error) {
-	r := map[string]*sql.Stmt{}
-	for _, s := range []struct {
-		name string
-		q    string
-	}{
-		{
-			name: "tweets",
-			q:    "INSERT OR IGNORE INTO tweets VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		},
-		{
-			name: "users",
-			q: `INSERT OR IGNORE INTO users (id, name, last_status_id)
-VALUES (?, ?, ?)
-ON CONFLICT(id)
-DO UPDATE SET name = excluded.name, last_status_id = excluded.last_status_id
-   WHERE excluded.last_status_id > users.last_status_id`,
-		},
-		{
-			name: "media",
-			q:    "INSERT OR IGNORE INTO media VALUES (?, ?, ?, ?)",
-		},
-		{
-			name: "urls",
-			q:    "INSERT OR IGNORE INTO urls VALUES (?, ?, ?, ?, ?)",
-		},
-		{
-			name: "hashtags",
-			q:    "INSERT OR IGNORE INTO hashtags VALUES (?, ?, ?)",
-		},
-	} {
-		stmt, err := db.Prepare(s.q)
-		if err != nil {
-			return nil, fmt.Errorf("%sステートメントの作成に失敗: %w", s.name, err)
-		}
-		r[s.name] = stmt
-	}
-	return r, nil
 }
 
 func insertAll(sm stmtMap, d *insertData) (int64, error) {
@@ -390,10 +354,27 @@ func updateTwilogDate(db *sqlx.DB) error {
 	reader.LazyQuotes = true
 	reader.FieldsPerRecord = -1 // 可変長レコード対応
 
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	stmt, err := tx.Prepare("UPDATE tweets SET created_at = ?, created_date = ? WHERE id = ?")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
 	for {
 		record, err := reader.Read()
 		if err != nil {
-			break
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return fmt.Errorf("CSVの読み込みエラー: %w", err)
 		}
 		if len(record) < 5 {
 			continue // 欠落行はスキップ
@@ -408,7 +389,10 @@ func updateTwilogDate(db *sqlx.DB) error {
 			continue
 		}
 
-		id, _ := strconv.ParseInt(idStr, 10, 64)
+		id, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
+			continue
+		}
 
 		// 投稿日時のパース（twilogの日時はJST）
 		createdAt, err := time.ParseInLocation("2006-01-02 15:04:05", dateStr, time.Local)
@@ -418,18 +402,16 @@ func updateTwilogDate(db *sqlx.DB) error {
 
 		createdDate := createdAt.Format("20060102")
 
-		q := "UPDATE tweets SET created_at = ?, created_date = ? WHERE id = ?"
-		_, err = db.Exec(
-			q,
+		if _, err := stmt.Exec(
 			createdAt.In(time.UTC).Format(time.RFC3339),
 			createdDate,
 			id,
-		)
-		if err != nil {
-			return fmt.Errorf("スキップ: 行 %s（INSERT失敗）: %w", idStr, err)
+		); err != nil {
+			return fmt.Errorf("UPDATE失敗: id=%d: %w", id, err)
 		}
 	}
-	return nil
+
+	return tx.Commit()
 }
 
 func main() {
