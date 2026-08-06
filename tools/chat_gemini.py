@@ -117,33 +117,41 @@ def list_available_models(api_key):
                     models.append(name)
             return models
     except Exception as e:
+        print(f"⚠️  モデル一覧の取得中に警告: {e}")
         return []
 
 def normalize_model_name(model, available_models):
-    if not available_models:
-        return model
-    
-    if model in available_models:
-        return model
-    
-    # プレフィックスで検索
-    for am in available_models:
-        if am.startswith(model):
-            return am
-
-    # gemini-1.5-pro の場合は候補を探す
-    if "pro" in model:
+    # もしAPIキーでモデル一覧が取得できた場合
+    if available_models:
+        # 完全一致
+        if model in available_models:
+            return model
+        
+        # 部分一致検索
         for am in available_models:
-            if "pro" in am:
+            if model in am or am in model:
                 return am
-                
-    # デフォルトフォールバック
-    if "gemini-2.0-flash" in available_models:
-        return "gemini-2.0-flash"
-    if "gemini-1.5-flash" in available_models:
-        return "gemini-1.5-flash"
-    
-    return available_models[0] if available_models else model
+        
+        # Pro系を求めている場合
+        if "pro" in model:
+            for am in available_models:
+                if "pro" in am:
+                    return am
+
+        # Flash系
+        for am in available_models:
+            if "2.0-flash" in am or "1.5-flash" in am:
+                return am
+        
+        return available_models[0]
+
+    # モデル一覧取得が失敗した場合のハードコードエイリアス
+    hardcoded_map = {
+        "gemini-1.5-pro": "gemini-1.5-pro-002",
+        "gemini-2.0-pro": "gemini-2.0-pro-exp-02-05",
+        "gemini-1.5-flash": "gemini-1.5-flash-002",
+    }
+    return hardcoded_map.get(model, "gemini-2.0-flash")
 
 def call_gemini_api(api_key, contents, tools_declarations, model="gemini-2.0-flash", max_retries=3, available_models=None):
     real_model = normalize_model_name(model, available_models)
@@ -200,6 +208,8 @@ def main():
         sys.exit(1)
 
     available_models = list_available_models(api_key)
+    if available_models:
+        print(f"📋 利用可能モデル一覧: {', '.join(available_models[:5])}...")
     target_model = normalize_model_name(user_requested_model, available_models)
 
     print("🚀 MCP サーバーを起動中...")
@@ -209,9 +219,9 @@ def main():
         mcp_tools = mcp_client.list_tools()
         gemini_tools = mcp_tools_to_gemini_declarations(mcp_tools)
         
-        print(f"✨ Gemini ({target_model}) 連携対話チャット (Twilog Archive MCP)")
+        print(f"✨ Gemini (モデル: {target_model}) 連携対話チャット (Twilog Archive MCP)")
         if user_requested_model != target_model:
-            print(f"ℹ️  '{user_requested_model}' はこのAPIキーで未検出のため、'{target_model}' を使用します。")
+            print(f"ℹ️  指定された '{user_requested_model}' を '{target_model}' に調整しました。")
         print("ツイートに関する質問を入力してください（終了するには 'exit' や 'quit' と入力）。")
         print("------------------------------------------------------------")
 
