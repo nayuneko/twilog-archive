@@ -6,31 +6,48 @@ type TweetProps = {
 };
 
 const TweetCard: React.FC<TweetProps> = ({ tweet }) => {
+    const escapeHtml = (str: string) => {
+        return str
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    };
+
     const formatText = (text: string) => {
+        let safeText = escapeHtml(text);
+
         if (tweet.urls) {
-            tweet.urls.map(u => {
-                console.log('urls', tweet.id, u)
-                text = text.replaceAll(
-                    u.url,
-                    `<a href="${u.expanded_url}" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline">${u.display_url}</a>`
-                )
-            })
+            tweet.urls.forEach(u => {
+                const escapedUrl = escapeHtml(u.url);
+                const escapedExpandedUrl = escapeHtml(u.expanded_url);
+                const escapedDisplayUrl = escapeHtml(u.display_url);
+                safeText = safeText.replaceAll(
+                    escapedUrl,
+                    `<a href="${escapedExpandedUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline">${escapedDisplayUrl}</a>`
+                );
+            });
         }
+
         if (tweet.hashtags) {
-            tweet.hashtags.map(t => {
-                const tag = `#${t}`
-                const url = `https://x.com/search?q=${ encodeURIComponent(tag)}`
-                text = text.replaceAll(
-                    tag,
-                    `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline">${tag}</a>`
-                )
-            })
+            tweet.hashtags.forEach(t => {
+                const tag = `#${t}`;
+                const escapedTag = escapeHtml(tag);
+                const url = `https://x.com/search?q=${encodeURIComponent(tag)}`;
+                safeText = safeText.replaceAll(
+                    escapedTag,
+                    `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline">${escapedTag}</a>`
+                );
+            });
         }
-        text = text.replace(
+
+        safeText = safeText.replace(
             /https:\/\/t\.co\/[a-zA-Z0-9]+/g,
             (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline">${url}</a>`
-        )
-        return text.replace(/\n/g, '<br />');
+        );
+
+        return safeText.replace(/\n/g, '<br />');
     };
     const tweetUrl = `https://x.com/${tweet.screen_name}/status/${tweet.id}`
 

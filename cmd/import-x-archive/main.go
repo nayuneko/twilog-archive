@@ -246,6 +246,12 @@ func createHashtags(t *xdata.Tweet) []model.Hashtags {
 	return r
 }
 
+func (sm stmtMap) Close() {
+	for _, stmt := range sm {
+		_ = stmt.Close()
+	}
+}
+
 func importTweetsFromFile(db *sqlx.DB, path string) (int64, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -258,28 +264,56 @@ func importTweetsFromFile(db *sqlx.DB, path string) (int64, error) {
 		return 0, err
 	}
 
-	sm, err := createStatement(db)
+	tx, err := db.Begin()
 	if err != nil {
 		return 0, err
 	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
-	var rows int64
+	sm := make(stmtMap)
+	for _, s := range []struct {
+		name string
+		q    string
+	}{
+		{name: "tweets", q: "INSERT OR IGNORE INTO tweets VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"},
+		{name: "users", q: `INSERT OR IGNORE INTO users (id, name, last_status_id) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, last_status_id = excluded.last_status_id WHERE excluded.last_status_id > users.last_status_id`},
+		{name: "media", q: "INSERT OR IGNORE INTO media VALUES (?, ?, ?, ?)"},
+		{name: "urls", q: "INSERT OR IGNORE INTO urls VALUES (?, ?, ?, ?, ?)"},
+		{name: "hashtags", q: "INSERT OR IGNORE INTO hashtags VALUES (?, ?, ?)"},
+	} {
+		stmt, err := tx.Prepare(s.q)
+		if err != nil {
+			return 0, fmt.Errorf("%sステートメントの作成に失敗: %w", s.name, err)
+		}
+		sm[s.name] = stmt
+	}
+	defer sm.Close()
+
+	var count int64
 	for _, tw := range tweets {
-		tweets := createTweets(&tw.Tweet)
-		users := createUsers(&tw.Tweet, tweets)
-		media := createMedia(&tw.Tweet, tweets)
-		if rows, err = insertAll(sm, &insertData{
-			tweets,
+		tweetsModel := createTweets(&tw.Tweet)
+		users := createUsers(&tw.Tweet, tweetsModel)
+		media := createMedia(&tw.Tweet, tweetsModel)
+		insertedRows, err := insertAll(sm, &insertData{
+			tweetsModel,
 			users,
 			media,
 			createUrls(&tw.Tweet),
 			createHashtags(&tw.Tweet),
-		}); err != nil {
+		})
+		if err != nil {
 			return 0, err
 		}
-		//_, _ = stmtFTS.Exec(t.IDStr, t.FullText)
+		count += insertedRows
 	}
-	return rows, nil
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+
+	return count, nil
 }
 
 // importTweets jsonディレクトリにあるtweets.jsonをすべてインポート

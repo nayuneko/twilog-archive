@@ -108,6 +108,29 @@ func removeMediaURLFromEnd(text string, embedMediaURL *string) string {
 }
 
 func makeTweetResponse(db *sqlx.DB, tweets []model.TweetsWithName) ([]TweetResponse, error) {
+	if len(tweets) == 0 {
+		return []TweetResponse{}, nil
+	}
+
+	tweetIDs := make([]int64, len(tweets))
+	for i, t := range tweets {
+		tweetIDs[i] = t.ID
+	}
+
+	// 一括取得で N+1 を解消
+	mediaMap, err := repository.MediaFindByTweetIDs(db, tweetIDs)
+	if err != nil {
+		return nil, err
+	}
+	urlsMap, err := repository.URLsFindByTweetIDs(db, tweetIDs)
+	if err != nil {
+		return nil, err
+	}
+	hashtagsMap, err := repository.HashtagsFindByTweetIDs(db, tweetIDs)
+	if err != nil {
+		return nil, err
+	}
+
 	grouped := make(map[string][]TweetResponseTweet)
 	for _, t := range tweets {
 		tweet := TweetResponseTweet{
@@ -125,24 +148,18 @@ func makeTweetResponse(db *sqlx.DB, tweets []model.TweetsWithName) ([]TweetRespo
 			Retweeted: t.Retweeted,
 			Replied:   t.Replied,
 		}
-		media, err := repository.MediaFindByTweetID(db, t.ID)
-		if err != nil {
-			return nil, err
-		}
-		if media != nil && len(media) > 0 {
+
+		if mediaList, ok := mediaMap[t.ID]; ok && len(mediaList) > 0 {
 			var mediaUrls []string
-			for _, m := range media {
+			for _, m := range mediaList {
 				mediaUrls = append(mediaUrls, m.MediaURL)
 			}
 			tweet.Media = mediaUrls
 		}
-		urls, err := repository.URLsFindByTweetID(db, t.ID)
-		if err != nil {
-			return nil, err
-		}
-		if urls != nil && len(urls) > 0 {
+
+		if urlList, ok := urlsMap[t.ID]; ok && len(urlList) > 0 {
 			var respUrls []TweetResponseURL
-			for _, u := range urls {
+			for _, u := range urlList {
 				respUrls = append(respUrls, TweetResponseURL{
 					URL:         u.URL,
 					ExpandedURL: u.ExpandURL,
@@ -151,17 +168,15 @@ func makeTweetResponse(db *sqlx.DB, tweets []model.TweetsWithName) ([]TweetRespo
 			}
 			tweet.URLs = respUrls
 		}
-		hashtags, err := repository.HashtagsFindByTweetID(db, t.ID)
-		if err != nil {
-			return nil, err
-		}
-		if hashtags != nil && len(hashtags) > 0 {
+
+		if hashtagList, ok := hashtagsMap[t.ID]; ok && len(hashtagList) > 0 {
 			var respHashTags []string
-			for _, h := range hashtags {
+			for _, h := range hashtagList {
 				respHashTags = append(respHashTags, h.Tag)
 			}
 			tweet.Hashtags = respHashTags
 		}
+
 		grouped[t.CreatedDate] = append(grouped[t.CreatedDate], tweet)
 	}
 

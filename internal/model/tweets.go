@@ -10,7 +10,7 @@ type Tweets struct {
 	FullText      string    `db:"full_text"`
 	Retweeted     bool      `db:"retweeted"`
 	Replied       bool      `db:"replied"`
-	LogType       string    `db:"log_type"`
+	LogType       int       `db:"log_type"`
 	UserID        *int64    `db:"user_id"`
 	EmbedMediaURL *string   `db:"embed_media_url"`
 }
