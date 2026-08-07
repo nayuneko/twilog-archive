@@ -1,4 +1,4 @@
-.PHONY: import run clean build-web dev clean-js clean-json clean-data
+.PHONY: import run clean build-web dev
 
 GO_BUILD := CGO_ENABLED=1 CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" go build -tags fts5
 
@@ -28,14 +28,6 @@ chat-gemini: bin/mcp-server
 
 clean:
 	rm -f bin/*
-
-clean-js:
-	rm -f data/tweets/*.js
-
-clean-json:
-	rm -f data/json/*.json
-
-clean-data: clean-js clean-json
 
 extract-archive: bin/extract-archive
 	./bin/extract-archive $(ZIP)
