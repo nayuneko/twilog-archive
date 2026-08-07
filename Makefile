@@ -1,18 +1,26 @@
 JS_FILES := $(wildcard data/tweets/*.js)
 JSON_FILES := $(patsubst data/tweets/%.js,data/json/%.json,$(JS_FILES))
 
-.PHONY: pre-parse clean-json
+.PHONY: import run clean build-web dev pre-parse clean-json
+
+GO_BUILD := CGO_ENABLED=1 CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" go build -tags fts5
+
+build-web:
+	cd web && npm run build
 
 pre-parse: $(JSON_FILES)
 
-run: bin/api
-	bin/api
+run: bin/server
+	bin/server
+
+dev: bin/server
+	(cd web && npm run dev) & bin/server
 
 data/json/%.json: data/tweets/%.js
 	node tools/tweets_parser.js $< $@
 
-bin/api:
-	go build -o bin/api cmd/api/main.go
+bin/server: cmd/server/main.go build-web
+	$(GO_BUILD) -o bin/server cmd/server/main.go
 
 bin/extract-archive: cmd/extract-archive/main.go
 	go build -o $@ $^
