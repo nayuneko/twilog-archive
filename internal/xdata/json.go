@@ -7,6 +7,16 @@ import (
 )
 
 type (
+	TweetHeaderWrapper struct {
+		TweetHeader TweetHeader `json:"tweet"`
+	}
+
+	TweetHeader struct {
+		TweetID   XID        `json:"tweet_id"`
+		UserID    XID        `json:"user_id"`
+		CreatedAt XCreatedAt `json:"created_at"`
+	}
+
 	TweetWrapper struct {
 		Tweet Tweet `json:"tweet"`
 	}

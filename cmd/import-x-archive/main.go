@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"database/sql"
 	"encoding/csv"
 	"encoding/json"
@@ -10,6 +11,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -25,6 +27,10 @@ import (
 
 const (
 	updateTwilog = false
+)
+
+var (
+	reTweetsPart = regexp.MustCompile(`^tweets-part(\d+)\.js$`)
 )
 
 type stmtMap map[string]*sql.Stmt
@@ -216,15 +222,12 @@ func (sm stmtMap) Close() {
 	}
 }
 
-func importTweetsFromFile(db *sqlx.DB, path string) (int64, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return 0, err
-	}
-	defer file.Close()
+// importTweetsFromReader io.Reader (JSまたはJSONデータ) からツイートをデコードしてインポート
+func importTweetsFromReader(db *sqlx.DB, r io.Reader) (int64, error) {
+	jsReader := xdata.NewStripJSPrefixReader(r)
 
 	var tweets []xdata.TweetWrapper
-	if err := json.NewDecoder(file).Decode(&tweets); err != nil {
+	if err := json.NewDecoder(jsReader).Decode(&tweets); err != nil {
 		return 0, err
 	}
 
@@ -280,57 +283,90 @@ func importTweetsFromFile(db *sqlx.DB, path string) (int64, error) {
 	return count, nil
 }
 
-// importTweets jsonディレクトリにあるtweets.jsonをすべてインポート
-func importTweets() error {
-
-	db, err := sqlx.Open("sqlite3", constant.DBFile)
+func importTweetsFromFile(db *sqlx.DB, path string) (int64, error) {
+	file, err := os.Open(path)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	defer db.Close()
+	defer file.Close()
 
-	entries, err := os.ReadDir(constant.JsonDir)
+	return importTweetsFromReader(db, file)
+}
+
+func isTweetJSFile(filename string) bool {
+	base := filepath.Base(filename)
+	return base == "tweets.js" || reTweetsPart.MatchString(base)
+}
+
+// importTweetsFromZip ZIPファイルから解凍せずに直接ツイートデータを読み込んでインポート
+func importTweetsFromZip(db *sqlx.DB, zipPath string) error {
+	zr, err := zip.OpenReader(zipPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("ZIPファイルオープン失敗: %w", err)
 	}
+	defer zr.Close()
 
-	//var header []xdata.TweetHeaderWrapper
-	for _, entry := range entries {
-		name := entry.Name()
-		if !entry.IsDir() && filepath.Ext(name) == ".json" {
-			fullPath := filepath.Join(constant.JsonDir, name)
-			if name == "tweet-headers.json" {
-				/*
-					if d, err := loadTweetHeaderFromFile(fullPath); err != nil {
-						return err
-					} else {
-						header = d
-					}
-				*/
-				continue
-			} else if name == "like.json" {
-				continue
-			} else {
-				if rows, err := importTweetsFromFile(db, fullPath); err != nil {
-					return err
-				} else {
-					fmt.Printf("インポート完了: %s（%d件）\n", fullPath, rows)
-				}
+	var totalImported int64
+	for _, zf := range zr.File {
+		if isTweetJSFile(zf.Name) {
+			rc, err := zf.Open()
+			if err != nil {
+				return fmt.Errorf("ZIP内ファイル読込失敗 (%s): %w", zf.Name, err)
 			}
+			rows, err := importTweetsFromReader(db, rc)
+			_ = rc.Close()
+			if err != nil {
+				return fmt.Errorf("インポート失敗 (%s): %w", zf.Name, err)
+			}
+			fmt.Printf("インポート完了: %s（%d件）\n", zf.Name, rows)
+			totalImported += rows
 		}
 	}
+
+	if totalImported == 0 {
+		fmt.Println("対象のツイートデータ (tweets.js / tweets-part*.js) がZIP内に見つかりませんでした。")
+	}
+
+	return finishImport(db)
+}
+
+// importTweetsFromDir ディレクトリ配下のjson/jsファイルをインポート (互換性用)
+func importTweetsFromDir(db *sqlx.DB, dirPath string) error {
+	entries, err := os.ReadDir(dirPath)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		name := entry.Name()
+		ext := filepath.Ext(name)
+		if !entry.IsDir() && (ext == ".json" || ext == ".js") {
+			if name == "tweet-headers.json" || name == "tweet-headers.js" || name == "like.json" || name == "like.js" {
+				continue
+			}
+			fullPath := filepath.Join(dirPath, name)
+			rows, err := importTweetsFromFile(db, fullPath)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("インポート完了: %s（%d件）\n", fullPath, rows)
+		}
+	}
+
+	return finishImport(db)
+}
+
+func finishImport(db *sqlx.DB) error {
 	// 自分のIDを追加
 	if _, err := db.Exec("INSERT OR IGNORE INTO users VALUES (?, ?, 0)", constant.MyUserID, constant.MyName); err != nil {
 		return err
 	}
-	//
 
-	// twilogの時刻で更新
+	// twilogのカレンダーデータ生成
 	if _, err := utils.MakeCalendarData(db); err != nil {
 		return err
 	}
 	if updateTwilog {
-		// twilogの時刻で更新
 		if err := updateTwilogDate(db); err != nil {
 			return err
 		}
@@ -340,10 +376,8 @@ func importTweets() error {
 }
 
 func updateTwilogDate(db *sqlx.DB) error {
-	// ファイルパス・DBパスの設定
 	csvPath := "./data/csv/nayuneko-250707.csv"
 
-	// CSVオープン
 	f, err := os.Open(csvPath)
 	if err != nil {
 		return err
@@ -352,7 +386,7 @@ func updateTwilogDate(db *sqlx.DB) error {
 
 	reader := csv.NewReader(f)
 	reader.LazyQuotes = true
-	reader.FieldsPerRecord = -1 // 可変長レコード対応
+	reader.FieldsPerRecord = -1
 
 	tx, err := db.Begin()
 	if err != nil {
@@ -377,14 +411,13 @@ func updateTwilogDate(db *sqlx.DB) error {
 			return fmt.Errorf("CSVの読み込みエラー: %w", err)
 		}
 		if len(record) < 5 {
-			continue // 欠落行はスキップ
+			continue
 		}
 
 		idStr := record[0]
 		dateStr := record[2]
 		logType := record[4]
 
-		// ログタイプは1:ツイート(RT含む)、2:いいね、3:ブックマーク
 		if logType != "1" {
 			continue
 		}
@@ -394,7 +427,6 @@ func updateTwilogDate(db *sqlx.DB) error {
 			continue
 		}
 
-		// 投稿日時のパース（twilogの日時はJST）
 		createdAt, err := time.ParseInLocation("2006-01-02 15:04:05", dateStr, time.Local)
 		if err != nil {
 			return fmt.Errorf("スキップ: 行 %s（日時パース失敗）: %w", idStr, err)
@@ -415,7 +447,53 @@ func updateTwilogDate(db *sqlx.DB) error {
 }
 
 func main() {
-	if err := importTweets(); err != nil {
-		log.Fatal(err)
+	db, err := sqlx.Open("sqlite3", constant.DBFile)
+	if err != nil {
+		log.Fatalf("DB接続失敗: %v", err)
 	}
+	defer db.Close()
+
+	var targetPath string
+	if len(os.Args) >= 2 {
+		targetPath = os.Args[1]
+	}
+
+	if targetPath != "" {
+		stat, err := os.Stat(targetPath)
+		if err != nil {
+			log.Fatalf("指定されたパスが存在しないかエラー: %v", err)
+		}
+		if !stat.IsDir() && strings.HasSuffix(strings.ToLower(targetPath), ".zip") {
+			if err := importTweetsFromZip(db, targetPath); err != nil {
+				log.Fatal(err)
+			}
+			return
+		} else if stat.IsDir() {
+			if err := importTweetsFromDir(db, targetPath); err != nil {
+				log.Fatal(err)
+			}
+			return
+		} else {
+			// 単一ファイルの場合
+			rows, err := importTweetsFromFile(db, targetPath)
+			if err != nil {
+				log.Fatal(err)
+			}
+			fmt.Printf("インポート完了: %s（%d件）\n", targetPath, rows)
+			if err := finishImport(db); err != nil {
+				log.Fatal(err)
+			}
+			return
+		}
+	}
+
+	// 引数なしの場合はデフォルトで JsonDir または TweetsDir からインポート
+	if _, err := os.Stat(constant.JsonDir); err == nil {
+		if err := importTweetsFromDir(db, constant.JsonDir); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+
+	log.Fatal("使い方: import-x-archive <x-archive.zip | データディレクトリ>")
 }
