@@ -52,8 +52,8 @@ func Test_TweetHeader(t *testing.T) {
 			if int64(g.TweetHeader.UserID) != int64(w.TweetHeader.UserID) {
 				t.Fatalf("UserIDが違う. idx = %d, given = %d, want = %d", idx, g.TweetHeader.TweetID, w.TweetHeader.TweetID)
 			}
-			if g.TweetHeader.CreatedAt.Format(time.RFC3339) != w.TweetHeader.CreatedAt.Format(time.RFC3339) {
-				t.Fatalf("CreatedAtが違う. idx = %d, given = %s, want = %s", idx, g.TweetHeader.CreatedAt.Format(time.RFC3339), w.TweetHeader.CreatedAt.Format(time.RFC3339))
+			if g.TweetHeader.CreatedAt.Time().Format(time.RFC3339) != w.TweetHeader.CreatedAt.Time().Format(time.RFC3339) {
+				t.Fatalf("CreatedAtが違う. idx = %d, given = %s, want = %s", idx, g.TweetHeader.CreatedAt.Time().Format(time.RFC3339), w.TweetHeader.CreatedAt.Time().Format(time.RFC3339))
 			}
 		}
 	})
