@@ -9,7 +9,8 @@ import (
 	"regexp"
 	"strconv"
 	"time"
-	"twilog-archive/internal/constant"
+	"twilog-archive/internal/config"
+	"twilog-archive/internal/model"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -77,7 +78,7 @@ func main() {
 		match := re.FindStringSubmatch(url)
 		if len(match) >= 2 {
 			screenName = match[1]
-			retweeted = screenName != constant.MyScreenName
+			retweeted = screenName != config.MyScreenName
 		} else {
 			fmt.Println("マッチしませんでした")
 			continue
@@ -94,7 +95,7 @@ func main() {
 			screenName,
 			text,
 			retweeted,
-			constant.LogTypeTwilog,
+			model.LogTypeTwilog,
 		)
 		if err != nil {
 			log.Printf("スキップ: 行 %s（INSERT失敗）: %v\n", idStr, err)

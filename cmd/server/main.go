@@ -10,14 +10,14 @@ import (
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
 	_ "github.com/mattn/go-sqlite3"
-	"twilog-archive/internal/constant"
+	"twilog-archive/internal/config"
 	"twilog-archive/internal/handler"
 	"twilog-archive/web"
 )
 
 func main() {
 	// SQLiteに接続
-	db, err := sqlx.Open("sqlite3", constant.DBFile+"?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)")
+	db, err := sqlx.Open("sqlite3", config.DBFile+"?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)")
 	if err != nil {
 		log.Fatal(err)
 	}
