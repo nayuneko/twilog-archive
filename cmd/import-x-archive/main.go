@@ -21,7 +21,6 @@ import (
 
 	"twilog-archive/internal/constant"
 	"twilog-archive/internal/model"
-	"twilog-archive/internal/utils"
 	"twilog-archive/internal/xdata"
 )
 
@@ -362,10 +361,6 @@ func finishImport(db *sqlx.DB) error {
 		return err
 	}
 
-	// twilogのカレンダーデータ生成
-	if _, err := utils.MakeCalendarData(db); err != nil {
-		return err
-	}
 	if updateTwilog {
 		if err := updateTwilogDate(db); err != nil {
 			return err
