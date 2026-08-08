@@ -11,7 +11,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -26,13 +25,9 @@ import (
 
 const (
 	updateTwilog = false
+	batchSize    = 500
 )
 
-var (
-	reTweetsPart = regexp.MustCompile(`^tweets-part(\d+)\.js$`)
-)
-
-type stmtMap map[string]*sql.Stmt
 type insertData struct {
 	tweet    *model.Tweets
 	users    []model.Users
@@ -41,72 +36,201 @@ type insertData struct {
 	hashtags []model.Hashtags
 }
 
-func insertAll(sm stmtMap, d *insertData) (int64, error) {
-	// tweets
-	r, err := sm["tweets"].Exec(
-		d.tweet.ID,
-		d.tweet.CreatedAt.Format(time.RFC3339),
-		d.tweet.CreatedAt.In(time.Local).Format("20060102"),
-		d.tweet.ScreenName,
-		d.tweet.FullText,
-		d.tweet.Retweeted,
-		d.tweet.Replied,
-		model.LogTypeXArchive,
-		d.tweet.UserID,
-		d.tweet.EmbedMediaURL,
-	)
-	if err != nil {
-		return 0, fmt.Errorf("tweetsの追加に失敗: id = %d, %w", d.tweet.ID, err)
+func setupDB(db *sqlx.DB) error {
+	pragmas := []string{
+		"PRAGMA journal_mode = WAL;",
+		"PRAGMA synchronous = NORMAL;",
+		"PRAGMA cache_size = -64000;",
+		"PRAGMA temp_store = MEMORY;",
 	}
-	rows, _ := r.RowsAffected()
-	//users
-	for _, u := range d.users {
-		if _, err := sm["users"].Exec(
-			u.ID,
-			u.Name,
-			d.tweet.ID,
-		); err != nil {
-			return 0, fmt.Errorf("usersの追加に失敗: id = %d, uid = %d, %w", d.tweet.ID, u.ID, err)
+	for _, p := range pragmas {
+		if _, err := db.Exec(p); err != nil {
+			return fmt.Errorf("PRAGMA設定失敗 (%s): %w", p, err)
 		}
 	}
-	// media
-	for _, m := range d.media {
-		if _, err := sm["media"].Exec(
-			d.tweet.ID,
-			m.Index,
-			m.MediaURL,
-			m.MediaType,
-		); err != nil {
-			return 0, fmt.Errorf("mediaの追加に失敗: id = %d, idx = %d, %w", d.tweet.ID, m.Index, err)
+	return nil
+}
+
+func insertBatch(tx *sql.Tx, batch []*insertData) (int64, error) {
+	if len(batch) == 0 {
+		return 0, nil
+	}
+
+	var totalTweetsInserted int64
+
+	// 1. tweets (chunk size 50, 10 params per row = 500 params)
+	const tweetChunkSize = 50
+	for i := 0; i < len(batch); i += tweetChunkSize {
+		end := i + tweetChunkSize
+		if end > len(batch) {
+			end = len(batch)
+		}
+		chunk := batch[i:end]
+
+		var sb strings.Builder
+		sb.WriteString("INSERT OR IGNORE INTO tweets VALUES ")
+		args := make([]interface{}, 0, len(chunk)*10)
+
+		for idx, d := range chunk {
+			if idx > 0 {
+				sb.WriteString(",")
+			}
+			sb.WriteString("(?,?,?,?,?,?,?,?,?,?)")
+			args = append(args,
+				d.tweet.ID,
+				d.tweet.CreatedAt.Format(time.RFC3339),
+				d.tweet.CreatedAt.In(time.Local).Format("20060102"),
+				d.tweet.ScreenName,
+				d.tweet.FullText,
+				d.tweet.Retweeted,
+				d.tweet.Replied,
+				model.LogTypeXArchive,
+				d.tweet.UserID,
+				d.tweet.EmbedMediaURL,
+			)
+		}
+
+		res, err := tx.Exec(sb.String(), args...)
+		if err != nil {
+			return 0, fmt.Errorf("tweetsのバッチ追加に失敗: %w", err)
+		}
+		rows, _ := res.RowsAffected()
+		totalTweetsInserted += rows
+	}
+
+	// 2. users (chunk size 100, 3 params per row = 300 params)
+	var allUsers []model.Users
+	for _, d := range batch {
+		allUsers = append(allUsers, d.users...)
+	}
+	if len(allUsers) > 0 {
+		const userChunkSize = 100
+		for i := 0; i < len(allUsers); i += userChunkSize {
+			end := i + userChunkSize
+			if end > len(allUsers) {
+				end = len(allUsers)
+			}
+			chunk := allUsers[i:end]
+
+			var sb strings.Builder
+			sb.WriteString("INSERT OR IGNORE INTO users (id, name, last_status_id) VALUES ")
+			args := make([]interface{}, 0, len(chunk)*3)
+
+			for idx, u := range chunk {
+				if idx > 0 {
+					sb.WriteString(",")
+				}
+				sb.WriteString("(?,?,?)")
+				args = append(args, u.ID, u.Name, u.LastStatusID)
+			}
+			sb.WriteString(" ON CONFLICT(id) DO UPDATE SET name = excluded.name, last_status_id = excluded.last_status_id WHERE excluded.last_status_id > users.last_status_id")
+
+			if _, err := tx.Exec(sb.String(), args...); err != nil {
+				return 0, fmt.Errorf("usersのバッチ追加に失敗: %w", err)
+			}
 		}
 	}
-	// urls
-	for _, u := range d.urls {
-		if _, err := sm["urls"].Exec(
-			d.tweet.ID,
-			u.Index,
-			u.URL,
-			u.ExpandURL,
-			u.DisplayURL,
-		); err != nil {
-			return 0, fmt.Errorf("urlの追加に失敗: id = %d, idx = %d, %w", d.tweet.ID, u.Index, err)
+
+	// 3. media (chunk size 100, 4 params per row = 400 params)
+	var allMedia []model.Media
+	for _, d := range batch {
+		allMedia = append(allMedia, d.media...)
+	}
+	if len(allMedia) > 0 {
+		const mediaChunkSize = 100
+		for i := 0; i < len(allMedia); i += mediaChunkSize {
+			end := i + mediaChunkSize
+			if end > len(allMedia) {
+				end = len(allMedia)
+			}
+			chunk := allMedia[i:end]
+
+			var sb strings.Builder
+			sb.WriteString("INSERT OR IGNORE INTO media VALUES ")
+			args := make([]interface{}, 0, len(chunk)*4)
+
+			for idx, m := range chunk {
+				if idx > 0 {
+					sb.WriteString(",")
+				}
+				sb.WriteString("(?,?,?,?)")
+				args = append(args, m.TweetID, m.Index, m.MediaURL, m.MediaType)
+			}
+
+			if _, err := tx.Exec(sb.String(), args...); err != nil {
+				return 0, fmt.Errorf("mediaのバッチ追加に失敗: %w", err)
+			}
 		}
 	}
-	// hashtags
-	for _, h := range d.hashtags {
-		if _, err := sm["hashtags"].Exec(
-			d.tweet.ID,
-			h.Index,
-			h.Tag,
-		); err != nil {
-			return 0, fmt.Errorf("hashtagの追加に失敗: id = %d, idx = %d, %w", d.tweet.ID, h.Index, err)
+
+	// 4. urls (chunk size 100, 5 params per row = 500 params)
+	var allURLs []model.URLs
+	for _, d := range batch {
+		allURLs = append(allURLs, d.urls...)
+	}
+	if len(allURLs) > 0 {
+		const urlChunkSize = 100
+		for i := 0; i < len(allURLs); i += urlChunkSize {
+			end := i + urlChunkSize
+			if end > len(allURLs) {
+				end = len(allURLs)
+			}
+			chunk := allURLs[i:end]
+
+			var sb strings.Builder
+			sb.WriteString("INSERT OR IGNORE INTO urls VALUES ")
+			args := make([]interface{}, 0, len(chunk)*5)
+
+			for idx, u := range chunk {
+				if idx > 0 {
+					sb.WriteString(",")
+				}
+				sb.WriteString("(?,?,?,?,?)")
+				args = append(args, u.TweetID, u.Index, u.URL, u.ExpandURL, u.DisplayURL)
+			}
+
+			if _, err := tx.Exec(sb.String(), args...); err != nil {
+				return 0, fmt.Errorf("urlsのバッチ追加に失敗: %w", err)
+			}
 		}
 	}
-	return rows, nil
+
+	// 5. hashtags (chunk size 100, 3 params per row = 300 params)
+	var allHashtags []model.Hashtags
+	for _, d := range batch {
+		allHashtags = append(allHashtags, d.hashtags...)
+	}
+	if len(allHashtags) > 0 {
+		const hashtagChunkSize = 100
+		for i := 0; i < len(allHashtags); i += hashtagChunkSize {
+			end := i + hashtagChunkSize
+			if end > len(allHashtags) {
+				end = len(allHashtags)
+			}
+			chunk := allHashtags[i:end]
+
+			var sb strings.Builder
+			sb.WriteString("INSERT OR IGNORE INTO hashtags VALUES ")
+			args := make([]interface{}, 0, len(chunk)*3)
+
+			for idx, h := range chunk {
+				if idx > 0 {
+					sb.WriteString(",")
+				}
+				sb.WriteString("(?,?,?)")
+				args = append(args, h.TweetID, h.Index, h.Tag)
+			}
+
+			if _, err := tx.Exec(sb.String(), args...); err != nil {
+				return 0, fmt.Errorf("hashtagsのバッチ追加に失敗: %w", err)
+			}
+		}
+	}
+
+	return totalTweetsInserted, nil
 }
 
 func createTweets(t *xdata.Tweet) *model.Tweets {
-
 	screenName := config.MyScreenName
 	fullText := t.FullText
 
@@ -134,10 +258,10 @@ func createTweets(t *xdata.Tweet) *model.Tweets {
 }
 
 func createUsers(t *xdata.Tweet, tweets *model.Tweets) []model.Users {
-	if t.Entities.UserMentions == nil || len(t.Entities.UserMentions) == 0 {
+	if len(t.Entities.UserMentions) == 0 {
 		return nil
 	}
-	var r []model.Users
+	r := make([]model.Users, 0, len(t.Entities.UserMentions))
 	for _, u := range t.Entities.UserMentions {
 		uid := int64(u.ID)
 		r = append(r, model.Users{
@@ -154,10 +278,10 @@ func createUsers(t *xdata.Tweet, tweets *model.Tweets) []model.Users {
 
 func createMedia(t *xdata.Tweet, tweets *model.Tweets) []model.Media {
 	media := func() []xdata.Media {
-		if t.ExtendedEntities.Media != nil && len(t.ExtendedEntities.Media) > 0 {
+		if len(t.ExtendedEntities.Media) > 0 {
 			return t.ExtendedEntities.Media
 		}
-		if t.Entities.Media != nil && len(t.Entities.Media) > 0 {
+		if len(t.Entities.Media) > 0 {
 			return t.Entities.Media
 		}
 		return nil
@@ -165,7 +289,7 @@ func createMedia(t *xdata.Tweet, tweets *model.Tweets) []model.Media {
 	if media == nil {
 		return nil
 	}
-	var r []model.Media
+	r := make([]model.Media, 0, len(media))
 	for idx, m := range media {
 		r = append(r, model.Media{
 			TweetID:   int64(t.ID),
@@ -184,10 +308,10 @@ func createMedia(t *xdata.Tweet, tweets *model.Tweets) []model.Media {
 }
 
 func createUrls(t *xdata.Tweet) []model.URLs {
-	if t.Entities.URLs == nil || len(t.Entities.URLs) == 0 {
+	if len(t.Entities.URLs) == 0 {
 		return nil
 	}
-	var r []model.URLs
+	r := make([]model.URLs, 0, len(t.Entities.URLs))
 	for idx, u := range t.Entities.URLs {
 		r = append(r, model.URLs{
 			TweetID:    int64(t.ID),
@@ -201,10 +325,10 @@ func createUrls(t *xdata.Tweet) []model.URLs {
 }
 
 func createHashtags(t *xdata.Tweet) []model.Hashtags {
-	if t.Entities.Hashtags == nil || len(t.Entities.Hashtags) == 0 {
+	if len(t.Entities.Hashtags) == 0 {
 		return nil
 	}
-	var r []model.Hashtags
+	r := make([]model.Hashtags, 0, len(t.Entities.Hashtags))
 	for idx, h := range t.Entities.Hashtags {
 		r = append(r, model.Hashtags{
 			TweetID: int64(t.ID),
@@ -215,19 +339,22 @@ func createHashtags(t *xdata.Tweet) []model.Hashtags {
 	return r
 }
 
-func (sm stmtMap) Close() {
-	for _, stmt := range sm {
-		_ = stmt.Close()
-	}
-}
-
-// importTweetsFromReader io.Reader (JSまたはJSONデータ) からツイートをデコードしてインポート
+// importTweetsFromReader io.Reader (JSまたはJSONデータ) からツイートをストリーミングデコードしてインポート
 func importTweetsFromReader(db *sqlx.DB, r io.Reader) (int64, error) {
 	jsReader := xdata.NewStripJSPrefixReader(r)
+	dec := json.NewDecoder(jsReader)
 
-	var tweets []xdata.TweetWrapper
-	if err := json.NewDecoder(jsReader).Decode(&tweets); err != nil {
-		return 0, err
+	t, err := dec.Token()
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("JSONトークンの読み込み失敗: %w", err)
+	}
+
+	delim, ok := t.(json.Delim)
+	if !ok || delim != '[' {
+		return 0, fmt.Errorf("JSON配列の開始 '[' が見つかりません: %v", t)
 	}
 
 	tx, err := db.Begin()
@@ -238,48 +365,55 @@ func importTweetsFromReader(db *sqlx.DB, r io.Reader) (int64, error) {
 		_ = tx.Rollback()
 	}()
 
-	sm := make(stmtMap)
-	for _, s := range []struct {
-		name string
-		q    string
-	}{
-		{name: "tweets", q: "INSERT OR IGNORE INTO tweets VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"},
-		{name: "users", q: `INSERT OR IGNORE INTO users (id, name, last_status_id) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, last_status_id = excluded.last_status_id WHERE excluded.last_status_id > users.last_status_id`},
-		{name: "media", q: "INSERT OR IGNORE INTO media VALUES (?, ?, ?, ?)"},
-		{name: "urls", q: "INSERT OR IGNORE INTO urls VALUES (?, ?, ?, ?, ?)"},
-		{name: "hashtags", q: "INSERT OR IGNORE INTO hashtags VALUES (?, ?, ?)"},
-	} {
-		stmt, err := tx.Prepare(s.q)
-		if err != nil {
-			return 0, fmt.Errorf("%sステートメントの作成に失敗: %w", s.name, err)
-		}
-		sm[s.name] = stmt
-	}
-	defer sm.Close()
+	batch := make([]*insertData, 0, batchSize)
+	var totalCount int64
 
-	var count int64
-	for _, tw := range tweets {
+	for dec.More() {
+		var tw xdata.TweetWrapper
+		if err := dec.Decode(&tw); err != nil {
+			return 0, fmt.Errorf("JSONデコード失敗: %w", err)
+		}
+
 		tweetsModel := createTweets(&tw.Tweet)
 		users := createUsers(&tw.Tweet, tweetsModel)
 		media := createMedia(&tw.Tweet, tweetsModel)
-		insertedRows, err := insertAll(sm, &insertData{
-			tweetsModel,
-			users,
-			media,
-			createUrls(&tw.Tweet),
-			createHashtags(&tw.Tweet),
+		urls := createUrls(&tw.Tweet)
+		hashtags := createHashtags(&tw.Tweet)
+
+		batch = append(batch, &insertData{
+			tweet:    tweetsModel,
+			users:    users,
+			media:    media,
+			urls:     urls,
+			hashtags: hashtags,
 		})
+
+		if len(batch) >= batchSize {
+			inserted, err := insertBatch(tx, batch)
+			if err != nil {
+				return 0, err
+			}
+			totalCount += inserted
+			batch = batch[:0]
+		}
+	}
+
+	if len(batch) > 0 {
+		inserted, err := insertBatch(tx, batch)
 		if err != nil {
 			return 0, err
 		}
-		count += insertedRows
+		totalCount += inserted
 	}
+
+	// 配列の閉じカッコ ']' を消費
+	_, _ = dec.Token()
 
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
 
-	return count, nil
+	return totalCount, nil
 }
 
 func importTweetsFromFile(db *sqlx.DB, path string) (int64, error) {
@@ -294,7 +428,7 @@ func importTweetsFromFile(db *sqlx.DB, path string) (int64, error) {
 
 func isTweetJSFile(filename string) bool {
 	base := filepath.Base(filename)
-	return base == "tweets.js" || reTweetsPart.MatchString(base)
+	return base == "tweets.js" || (strings.HasPrefix(base, "tweets-part") && strings.HasSuffix(base, ".js"))
 }
 
 // importTweetsFromZip ZIPファイルから解凍せずに直接ツイートデータを読み込んでインポート
@@ -447,6 +581,10 @@ func main() {
 		log.Fatalf("DB接続失敗: %v", err)
 	}
 	defer db.Close()
+
+	if err := setupDB(db); err != nil {
+		log.Printf("DB PRAGMA設定警告: %v", err)
+	}
 
 	var targetPath string
 	if len(os.Args) >= 2 {
