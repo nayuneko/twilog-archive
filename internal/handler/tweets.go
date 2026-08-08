@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"twilog-archive/internal/constant"
+	"twilog-archive/internal/config"
 	"twilog-archive/internal/form"
 	"twilog-archive/internal/model"
 	"twilog-archive/internal/repository"
@@ -133,7 +133,7 @@ func makeTweetResponse(db *sqlx.DB, tweets []model.TweetsWithName) ([]TweetRespo
 			ScreenName: t.ScreenName,
 			Name: func() *string {
 				if t.UserID == nil {
-					name := constant.MyName
+					name := config.MyName
 					return &name
 				}
 				return t.Name

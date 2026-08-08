@@ -13,7 +13,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	_ "github.com/mattn/go-sqlite3"
 
-	"twilog-archive/internal/constant"
+	"twilog-archive/internal/config"
 	"twilog-archive/internal/form"
 	"twilog-archive/internal/repository"
 )
@@ -25,12 +25,12 @@ func resolveDBPath() string {
 	execPath, err := os.Executable()
 	if err == nil {
 		projectDir := filepath.Dir(filepath.Dir(execPath))
-		candidate := filepath.Join(projectDir, constant.DBFile)
+		candidate := filepath.Join(projectDir, config.DBFile)
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate
 		}
 	}
-	return constant.DBFile
+	return config.DBFile
 }
 
 func main() {
@@ -75,7 +75,7 @@ func main() {
 		var sb strings.Builder
 		sb.WriteString(fmt.Sprintf("検索結果: '%s' (%d件)\n\n", query, len(tweets)))
 		for _, t := range tweets {
-			name := constant.MyName
+			name := config.MyName
 			if t.Name != nil {
 				name = *t.Name
 			}
@@ -110,7 +110,7 @@ func main() {
 		var sb strings.Builder
 		sb.WriteString(fmt.Sprintf("%s のツイート一覧 (%d件):\n\n", dateStr, len(tweets)))
 		for _, t := range tweets {
-			name := constant.MyName
+			name := config.MyName
 			if t.Name != nil {
 				name = *t.Name
 			}
@@ -134,7 +134,7 @@ func main() {
 		var sb strings.Builder
 		sb.WriteString(fmt.Sprintf("最新のツイート (%d件):\n\n", len(tweets)))
 		for _, t := range tweets {
-			name := constant.MyName
+			name := config.MyName
 			if t.Name != nil {
 				name = *t.Name
 			}

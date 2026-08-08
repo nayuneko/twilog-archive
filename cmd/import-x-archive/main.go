@@ -19,7 +19,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 
-	"twilog-archive/internal/constant"
+	"twilog-archive/internal/config"
 	"twilog-archive/internal/model"
 	"twilog-archive/internal/xdata"
 )
@@ -51,7 +51,7 @@ func insertAll(sm stmtMap, d *insertData) (int64, error) {
 		d.tweet.FullText,
 		d.tweet.Retweeted,
 		d.tweet.Replied,
-		constant.LogTypeXArchive,
+		model.LogTypeXArchive,
 		d.tweet.UserID,
 		d.tweet.EmbedMediaURL,
 	)
@@ -107,7 +107,7 @@ func insertAll(sm stmtMap, d *insertData) (int64, error) {
 
 func createTweets(t *xdata.Tweet) *model.Tweets {
 
-	screenName := constant.MyScreenName
+	screenName := config.MyScreenName
 	fullText := t.FullText
 
 	// RT @xxxx: から始まるツイートの場合RT
@@ -120,7 +120,7 @@ func createTweets(t *xdata.Tweet) *model.Tweets {
 			fullText = rest[idx+2:]
 		}
 	}
-	retweeted := screenName != constant.MyScreenName
+	retweeted := screenName != config.MyScreenName
 
 	tweets := &model.Tweets{
 		ID:         int64(t.ID),
@@ -357,7 +357,7 @@ func importTweetsFromDir(db *sqlx.DB, dirPath string) error {
 
 func finishImport(db *sqlx.DB) error {
 	// 自分のIDを追加
-	if _, err := db.Exec("INSERT OR IGNORE INTO users VALUES (?, ?, 0)", constant.MyUserID, constant.MyName); err != nil {
+	if _, err := db.Exec("INSERT OR IGNORE INTO users VALUES (?, ?, 0)", config.MyUserID, config.MyName); err != nil {
 		return err
 	}
 
@@ -442,7 +442,7 @@ func updateTwilogDate(db *sqlx.DB) error {
 }
 
 func main() {
-	db, err := sqlx.Open("sqlite3", constant.DBFile)
+	db, err := sqlx.Open("sqlite3", config.DBFile)
 	if err != nil {
 		log.Fatalf("DB接続失敗: %v", err)
 	}
@@ -483,8 +483,8 @@ func main() {
 	}
 
 	// 引数なしの場合はデフォルトで JsonDir または TweetsDir からインポート
-	if _, err := os.Stat(constant.JsonDir); err == nil {
-		if err := importTweetsFromDir(db, constant.JsonDir); err != nil {
+	if _, err := os.Stat(config.JsonDir); err == nil {
+		if err := importTweetsFromDir(db, config.JsonDir); err != nil {
 			log.Fatal(err)
 		}
 		return

@@ -2,6 +2,12 @@ package model
 
 import "time"
 
+const (
+	LogTypeTwilog   = 1
+	LogTypeXArchive = 2
+)
+
+
 type Tweets struct {
 	ID            int64     `db:"id"`
 	CreatedAt     time.Time `db:"created_at"`
