@@ -1,35 +1,17 @@
 package handler
 
 import (
-	"encoding/json"
+	"net/http"
+
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo"
-	"net/http"
-	"os"
-	"twilog-archive/internal/constant"
-	"twilog-archive/internal/utils"
-)
 
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil || !os.IsNotExist(err)
-}
+	"twilog-archive/internal/repository"
+)
 
 func Calendar(db *sqlx.DB) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		calendarData, err := func() (utils.CalendarData, error) {
-			if fileExists(constant.JsonCalendar) {
-				f, err := os.Open(constant.JsonCalendar)
-				if err == nil {
-					defer f.Close()
-					var calendarData utils.CalendarData
-					if err := json.NewDecoder(f).Decode(&calendarData); err == nil {
-						return calendarData, nil
-					}
-				}
-			}
-			return utils.MakeCalendarData(db)
-		}()
+		calendarData, err := repository.GetCalendarData(db)
 		if err != nil {
 			return err
 		}

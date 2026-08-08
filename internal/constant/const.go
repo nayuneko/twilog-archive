@@ -10,6 +10,4 @@ const (
 
 	DBFile  = "data/db/tweets.db"
 	JsonDir = "data/json"
-
-	JsonCalendar = "data/static/calendar.json"
 )
