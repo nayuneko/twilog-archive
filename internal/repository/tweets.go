@@ -14,46 +14,70 @@ func Search(db *sqlx.DB, req *form.SearchRequest) ([]model.TweetsWithName, int, 
 		return nil, 0, nil
 	}
 
-	// 1. FTS5 Trigram MATCH 検索
-	ftsQuery := BuildFTSQuery(word, req.ExcludeWord, req.SearchType)
-	if ftsQuery == "" {
+	hybrid := BuildHybridSearchQuery(word, req.ExcludeWord, req.SearchType)
+	// 検索トークンが1つも無い場合
+	if !hybrid.HasFTS && len(hybrid.LikeConds) == 0 {
 		return nil, 0, nil
 	}
 
 	typeCond := BuildTypeFilterSQL(req.TweetTypeFilter)
 	hashtagCond, hashtagParams := BuildHashtagExcludeSQL(word, req.ExcludeWord)
 
-	var ftsWhere []string
-	var paramsCountFTS []interface{}
-	paramsCountFTS = append(paramsCountFTS, ftsQuery)
+	// FTS5 対象トークンがある場合: ハイブリッド検索（FTS5 MATCH + LIKE 補助条件）
+	if hybrid.HasFTS {
+		result, total, err := searchWithFTS(db, req, hybrid, typeCond, hashtagCond, hashtagParams)
+		if err == nil {
+			return result, total, nil
+		}
+		// テーブル不在 / FTS5未サポートの場合のみ LIKE 検索にフォールバック
+		errMsg := err.Error()
+		if !strings.Contains(errMsg, "no such table") && !strings.Contains(errMsg, "fts5") {
+			return nil, 0, err
+		}
+	}
+
+	// FTS5 対象トークンが無い場合、または FTS5 フォールバック: 全て LIKE 検索
+	return searchWithLIKE(db, req, word, typeCond, hashtagCond, hashtagParams)
+}
+
+// searchWithFTS は FTS5 MATCH + LIKE 補助条件を組み合わせたハイブリッド検索を実行する
+func searchWithFTS(db *sqlx.DB, req *form.SearchRequest, hybrid HybridSearchResult, typeCond string, hashtagCond string, hashtagParams []interface{}) ([]model.TweetsWithName, int, error) {
+	var extraWhere []string
+	var extraParams []interface{}
+
+	// 2文字以下トークンの LIKE 条件を追加
+	for _, cond := range hybrid.LikeConds {
+		extraWhere = append(extraWhere, cond)
+	}
+	extraParams = append(extraParams, hybrid.LikeParams...)
 
 	if typeCond != "" {
-		ftsWhere = append(ftsWhere, typeCond)
+		extraWhere = append(extraWhere, typeCond)
 	}
 	if hashtagCond != "" {
-		ftsWhere = append(ftsWhere, hashtagCond)
-		paramsCountFTS = append(paramsCountFTS, hashtagParams...)
+		extraWhere = append(extraWhere, hashtagCond)
+		extraParams = append(extraParams, hashtagParams...)
 	}
 
-	ftsWhereStr := ""
-	if len(ftsWhere) > 0 {
-		ftsWhereStr = " AND " + strings.Join(ftsWhere, " AND ")
+	whereStr := ""
+	if len(extraWhere) > 0 {
+		whereStr = " AND " + strings.Join(extraWhere, " AND ")
 	}
 
+	// COUNT クエリ
 	var total int
-	qCountFTS := `SELECT COUNT(*) FROM tweets t JOIN tweets_fts f ON t.id = f.rowid WHERE tweets_fts MATCH ?` + ftsWhereStr
-	_ = db.Get(&total, qCountFTS, paramsCountFTS...)
+	qCount := `SELECT COUNT(*) FROM tweets t JOIN tweets_fts f ON t.id = f.rowid WHERE tweets_fts MATCH ?` + whereStr
+	paramsCount := append([]interface{}{hybrid.FTSQuery}, extraParams...)
+	_ = db.Get(&total, qCount, paramsCount...)
 
+	// データ取得クエリ
 	qFTS := `SELECT t.*, u.name 
 	         FROM tweets t 
 	         JOIN tweets_fts f ON t.id = f.rowid 
 	         LEFT JOIN users u ON t.user_id = u.id 
-	         WHERE tweets_fts MATCH ?` + ftsWhereStr
+	         WHERE tweets_fts MATCH ?` + whereStr
 
-	paramsFTS := []interface{}{ftsQuery}
-	if hashtagCond != "" {
-		paramsFTS = append(paramsFTS, hashtagParams...)
-	}
+	paramsFTS := append([]interface{}{hybrid.FTSQuery}, extraParams...)
 
 	if req.Pagination.LastID != nil {
 		qFTS += " AND t.id < ?"
@@ -62,18 +86,14 @@ func Search(db *sqlx.DB, req *form.SearchRequest) ([]model.TweetsWithName, int, 
 	qFTS += " ORDER BY t.id DESC LIMIT 50"
 
 	var result []model.TweetsWithName
-	err := db.Select(&result, qFTS, paramsFTS...)
-	if err == nil {
-		return result, total, nil
-	}
-
-	// テーブル不在 / FTS5未サポートの場合のみ LIKE 検索にフォールバック
-	errMsg := err.Error()
-	if !strings.Contains(errMsg, "no such table") && !strings.Contains(errMsg, "fts5") {
+	if err := db.Select(&result, qFTS, paramsFTS...); err != nil {
 		return nil, 0, err
 	}
+	return result, total, nil
+}
 
-	// 2. フォールバック: 通常の LIKE 検索
+// searchWithLIKE は全て LIKE 条件で検索を行う（FTS5 未使用 or フォールバック）
+func searchWithLIKE(db *sqlx.DB, req *form.SearchRequest, word string, typeCond string, hashtagCond string, hashtagParams []interface{}) ([]model.TweetsWithName, int, error) {
 	likeCond, likeParams := BuildLikeQuery(word, req.ExcludeWord, req.SearchType)
 	if likeCond == "" {
 		return nil, 0, nil
@@ -91,6 +111,7 @@ func Search(db *sqlx.DB, req *form.SearchRequest) ([]model.TweetsWithName, int, 
 
 	whereClause := strings.Join(likeWhere, " AND ")
 
+	var total int
 	qCountLIKE := "SELECT COUNT(*) FROM tweets t WHERE " + whereClause
 	_ = db.Get(&total, qCountLIKE, likeParams...)
 
@@ -101,6 +122,7 @@ func Search(db *sqlx.DB, req *form.SearchRequest) ([]model.TweetsWithName, int, 
 	}
 	qLIKE += " ORDER BY t.id DESC LIMIT 50"
 
+	var result []model.TweetsWithName
 	if err := db.Select(&result, qLIKE, likeParams...); err != nil {
 		return nil, 0, err
 	}
