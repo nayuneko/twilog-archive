@@ -11,18 +11,24 @@ function Search() {
     const [loading, setLoading] = useState(true);
 
     const query = searchParams.get('q') || '';
+    const notQuery = searchParams.get('not') || searchParams.get('exclude') || '';
     const type = (searchParams.get('type') as 'and' | 'or') || 'and';
 
     useEffect(() => {
         const fetchResults = () => {
-            if (!query) {
+            if (!query && !notQuery) {
                 setTweets([]);
                 setTotalCount(null);
                 setLoading(false);
                 return;
             }
             setLoading(true);
-            fetch(`/api/tweets/search/?q=${encodeURIComponent(query)}&type=${encodeURIComponent(type)}`)
+            const params = new URLSearchParams();
+            if (query) params.set('q', query);
+            if (notQuery) params.set('not', notQuery);
+            params.set('type', type);
+
+            fetch(`/api/tweets/search/?${params.toString()}`)
                 .then((res) => res.json())
                 .then((data) => {
                     if (data && Array.isArray(data.tweets)) {
@@ -40,18 +46,23 @@ function Search() {
                 });
         };
         fetchResults();
-    }, [query, type]);
+    }, [query, notQuery, type]);
 
     return (
-        <Layout query={query} searchType={type}>
+        <Layout query={query} excludeQuery={notQuery} searchType={type}>
             {loading ? (
                 <p>読み込み中...</p>
             ) : (
                 <>
-                    {query && (
+                    {(query || notQuery) && (
                         <div className="mb-4 bg-white p-3 rounded-sm text-sm text-gray-700 flex justify-between items-center border border-gray-200">
                             <div>
-                                <span>「<strong className="text-black">{query}</strong>」の検索結果 ({type.toUpperCase()}検索)</span>
+                                {query ? (
+                                    <span>「<strong className="text-black">{query}</strong>」の検索結果 ({type.toUpperCase()}検索)</span>
+                                ) : (
+                                    <span>除外キーワード検索</span>
+                                )}
+                                {notQuery && <span className="ml-2 text-xs text-red-600 font-medium">[除外: {notQuery}]</span>}
                             </div>
                             {totalCount !== null && (
                                 <div className="text-xs text-gray-600">

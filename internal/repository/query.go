@@ -12,10 +12,10 @@ type parsedToken struct {
 	isOp    bool
 }
 
-// BuildFTSQuery は入力検索ワードと searchType ("and"|"or") から FTS5 MATCH 式を生成する
-func BuildFTSQuery(input string, searchType string) string {
-	tokens := parseSearchInput(input)
-	if len(tokens) == 0 {
+// BuildFTSQuery は入力検索ワード、除外ワード、searchType ("and"|"or") から FTS5 MATCH 式を生成する
+func BuildFTSQuery(input string, excludeInput string, searchType string) string {
+	incTokens, excTokens := parseCombinedInput(input, excludeInput)
+	if len(incTokens) == 0 {
 		return ""
 	}
 
@@ -24,11 +24,10 @@ func BuildFTSQuery(input string, searchType string) string {
 		defaultOp = "OR"
 	}
 
-	var parts []string
+	var incParts []string
 	var currentOp string
 
-	for i := 0; i < len(tokens); i++ {
-		t := tokens[i]
+	for _, t := range incTokens {
 		if t.isOp {
 			if strings.ToUpper(t.text) == "OR" || t.text == "|" {
 				currentOp = "OR"
@@ -43,18 +42,35 @@ func BuildFTSQuery(input string, searchType string) string {
 		}
 
 		expr := formatFTSToken(t)
-		if len(parts) == 0 {
-			parts = append(parts, expr)
+		if len(incParts) == 0 {
+			incParts = append(incParts, expr)
 		} else {
-			parts = append(parts, op, expr)
+			incParts = append(incParts, op, expr)
 		}
 	}
 
-	if len(parts) == 0 {
+	if len(incParts) == 0 {
 		return ""
 	}
 
-	return strings.Join(parts, " ")
+	var mainExpr string
+	if len(incParts) > 1 {
+		mainExpr = "(" + strings.Join(incParts, " ") + ")"
+	} else {
+		mainExpr = incParts[0]
+	}
+
+	if len(excTokens) == 0 {
+		return mainExpr
+	}
+
+	var excParts []string
+	for _, t := range excTokens {
+		t.isNot = true
+		excParts = append(excParts, formatFTSToken(t))
+	}
+
+	return mainExpr + " " + strings.Join(excParts, " ")
 }
 
 // formatFTSToken はトークンを FTS5 構文用にフォーマットする
@@ -129,9 +145,9 @@ func parseSingleToken(match string, forceNot bool) parsedToken {
 }
 
 // BuildLikeQuery は FTS5 が使えない場合のフォールバック SQL 条件節を生成する
-func BuildLikeQuery(input string, searchType string) (string, []interface{}) {
-	tokens := parseSearchInput(input)
-	if len(tokens) == 0 {
+func BuildLikeQuery(input string, excludeInput string, searchType string) (string, []interface{}) {
+	incTokens, excTokens := parseCombinedInput(input, excludeInput)
+	if len(incTokens) == 0 {
 		return "", nil
 	}
 
@@ -140,11 +156,11 @@ func BuildLikeQuery(input string, searchType string) (string, []interface{}) {
 		defaultOp = "OR"
 	}
 
-	var conditions []string
+	var incConditions []string
 	var params []interface{}
 	var currentOp string
 
-	for _, t := range tokens {
+	for _, t := range incTokens {
 		if t.isOp {
 			if strings.ToUpper(t.text) == "OR" || t.text == "|" {
 				currentOp = "OR"
@@ -159,22 +175,62 @@ func BuildLikeQuery(input string, searchType string) (string, []interface{}) {
 		}
 
 		cond := "t.full_text LIKE ?"
-		if t.isNot {
-			cond = "t.full_text NOT LIKE ?"
-		}
 		param := "%" + t.text + "%"
 
-		if len(conditions) == 0 {
-			conditions = append(conditions, cond)
+		if len(incConditions) == 0 {
+			incConditions = append(incConditions, cond)
 		} else {
-			conditions = append(conditions, op+" "+cond)
+			incConditions = append(incConditions, op+" "+cond)
 		}
 		params = append(params, param)
 	}
 
-	if len(conditions) == 0 {
+	if len(incConditions) == 0 {
 		return "", nil
 	}
 
-	return "(" + strings.Join(conditions, " ") + ")", params
+	var mainCond string
+	if len(incConditions) > 1 {
+		mainCond = "(" + strings.Join(incConditions, " ") + ")"
+	} else {
+		mainCond = incConditions[0]
+	}
+
+	if len(excTokens) == 0 {
+		return mainCond, params
+	}
+
+	var excConditions []string
+	for _, t := range excTokens {
+		excConditions = append(excConditions, "t.full_text NOT LIKE ?")
+		params = append(params, "%"+t.text+"%")
+	}
+
+	fullCond := mainCond + " AND " + strings.Join(excConditions, " AND ")
+	return "(" + fullCond + ")", params
+}
+
+func parseCombinedInput(input string, excludeInput string) ([]parsedToken, []parsedToken) {
+	tokens := parseSearchInput(input)
+	excTokensFromInput := parseSearchInput(excludeInput)
+
+	var incTokens []parsedToken
+	var excTokens []parsedToken
+
+	for _, t := range tokens {
+		if t.isNot {
+			excTokens = append(excTokens, t)
+		} else {
+			incTokens = append(incTokens, t)
+		}
+	}
+
+	for _, t := range excTokensFromInput {
+		if !t.isOp {
+			t.isNot = true
+			excTokens = append(excTokens, t)
+		}
+	}
+
+	return incTokens, excTokens
 }

@@ -6,18 +6,24 @@ type Props = {
     children: React.ReactNode;
     date?: string;
     query?: string;
+    excludeQuery?: string;
     searchType?: 'and' | 'or';
 };
 
-const Layout: React.FC<Props> = ({ children, date, query = '', searchType: initialSearchType = 'and' }) => {
+const Layout: React.FC<Props> = ({ children, date, query = '', excludeQuery = '', searchType: initialSearchType = 'and' }) => {
     const [searchQuery, setSearchQuery] = useState(query);
+    const [excludeWord, setExcludeWord] = useState(excludeQuery);
     const [searchType, setSearchType] = useState<'and' | 'or'>(initialSearchType);
     const navigate = useNavigate();
 
     const handleSearchSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (searchQuery.trim()) {
-            navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}&type=${searchType}`);
+        if (searchQuery.trim() || excludeWord.trim()) {
+            const params = new URLSearchParams();
+            if (searchQuery.trim()) params.set('q', searchQuery.trim());
+            if (excludeWord.trim()) params.set('not', excludeWord.trim());
+            params.set('type', searchType);
+            navigate(`/search?${params.toString()}`);
         }
     };
 
@@ -42,15 +48,28 @@ const Layout: React.FC<Props> = ({ children, date, query = '', searchType: initi
                         </div>
                     </div>
                     <div className="rounded-sm bg-white w-full p-[10px]">
-                        <form onSubmit={handleSearchSubmit}>
-                            <input
-                                type="text"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder="検索"
-                                className="w-full border p-[3px] rounded-sm focus:outline-none focus:ring-1 focus:ring-black"
-                            />
-                            <div className="pt-1.5 text-center text-xs text-gray-600">
+                        <form onSubmit={handleSearchSubmit} className="space-y-2">
+                            <div>
+                                <label className="text-xs text-gray-500 block mb-0.5">検索キーワード</label>
+                                <input
+                                    type="text"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    placeholder="検索キーワード"
+                                    className="w-full border p-[3px] rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-black"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs text-gray-500 block mb-0.5">除外キーワード (任意)</label>
+                                <input
+                                    type="text"
+                                    value={excludeWord}
+                                    onChange={(e) => setExcludeWord(e.target.value)}
+                                    placeholder="除外する単語"
+                                    className="w-full border p-[3px] rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-black bg-gray-50"
+                                />
+                            </div>
+                            <div className="pt-1 text-center text-xs text-gray-600">
                                 <label className="pr-2 cursor-pointer">
                                     <input
                                         type="radio"

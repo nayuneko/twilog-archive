@@ -75,10 +75,15 @@ func TweetsDates(db *sqlx.DB) echo.HandlerFunc {
 func TweetsSearch(db *sqlx.DB) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		q := c.QueryParam("q")
+		notWord := c.QueryParam("not")
+		if notWord == "" {
+			notWord = c.QueryParam("exclude")
+		}
 		searchType := c.QueryParam("type")
 		req := &form.SearchRequest{
-			SearchWord: q,
-			SearchType: searchType,
+			SearchWord:  q,
+			ExcludeWord: notWord,
+			SearchType:  searchType,
 		}
 		tweets, totalCount, err := repository.Search(db, req)
 		if err != nil {

@@ -15,7 +15,7 @@ func Search(db *sqlx.DB, req *form.SearchRequest) ([]model.TweetsWithName, int, 
 	}
 
 	// 1. FTS5 Trigram MATCH 検索
-	ftsQuery := BuildFTSQuery(word, req.SearchType)
+	ftsQuery := BuildFTSQuery(word, req.ExcludeWord, req.SearchType)
 	if ftsQuery == "" {
 		return nil, 0, nil
 	}
@@ -50,7 +50,7 @@ func Search(db *sqlx.DB, req *form.SearchRequest) ([]model.TweetsWithName, int, 
 	}
 
 	// 2. フォールバック: 通常の LIKE 検索
-	likeCond, likeParams := BuildLikeQuery(word, req.SearchType)
+	likeCond, likeParams := BuildLikeQuery(word, req.ExcludeWord, req.SearchType)
 	if likeCond == "" {
 		return nil, 0, nil
 	}
