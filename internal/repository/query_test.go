@@ -27,25 +27,18 @@ func TestBuildFTSQuery(t *testing.T) {
 			want:         `("golang" AND "react")`,
 		},
 		{
-			name:         "Space separated OR with excludeInput",
-			input:        "golang react",
-			excludeInput: "python",
-			searchType:   "or",
-			want:         `("golang" OR "react") NOT "python"`,
+			name:         "Hashtag in excludeInput",
+			input:        "golang",
+			excludeInput: "#告知",
+			searchType:   "and",
+			want:         `"golang" NOT "#告知"`,
 		},
 		{
-			name:         "Hyphen exclusion inside input with OR searchType",
-			input:        "golang react -python",
+			name:         "Hyphen hashtag in input",
+			input:        "golang -#告知",
 			excludeInput: "",
-			searchType:   "or",
-			want:         `("golang" OR "react") NOT "python"`,
-		},
-		{
-			name:         "Exclude input multiple words",
-			input:        "cat dog",
-			excludeInput: "bird fish",
-			searchType:   "or",
-			want:         `("cat" OR "dog") NOT "bird" NOT "fish"`,
+			searchType:   "and",
+			want:         `"golang" NOT "#告知"`,
 		},
 	}
 
@@ -59,38 +52,31 @@ func TestBuildFTSQuery(t *testing.T) {
 	}
 }
 
-func TestBuildLikeQuery(t *testing.T) {
+func TestBuildHashtagExcludeSQL(t *testing.T) {
 	tests := []struct {
 		name         string
 		input        string
 		excludeInput string
-		searchType   string
 		wantCond     string
-		wantParams   []interface{}
+		wantParamCount int
 	}{
 		{
-			name:         "Space separated OR with excludeInput",
-			input:        "golang react",
-			excludeInput: "python",
-			searchType:   "or",
-			wantCond:     "((t.full_text LIKE ? OR t.full_text LIKE ?) AND t.full_text NOT LIKE ?)",
-			wantParams:   []interface{}{"%golang%", "%react%", "%python%"},
+			name:         "Exclude hashtag #告知",
+			input:        "golang",
+			excludeInput: "#告知",
+			wantCond:     "t.id NOT IN (SELECT tweet_id FROM hashtags WHERE tag IN (?, ?, ?))",
+			wantParamCount: 3,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotCond, gotParams := BuildLikeQuery(tt.input, tt.excludeInput, tt.searchType)
+			gotCond, gotParams := BuildHashtagExcludeSQL(tt.input, tt.excludeInput)
 			if gotCond != tt.wantCond {
-				t.Errorf("BuildLikeQuery() cond = %q; want %q", gotCond, tt.wantCond)
+				t.Errorf("BuildHashtagExcludeSQL() cond = %q; want %q", gotCond, tt.wantCond)
 			}
-			if len(gotParams) != len(tt.wantParams) {
-				t.Fatalf("BuildLikeQuery() params len = %d; want %d", len(gotParams), len(tt.wantParams))
-			}
-			for i, p := range gotParams {
-				if p != tt.wantParams[i] {
-					t.Errorf("BuildLikeQuery() param[%d] = %v; want %v", i, p, tt.wantParams[i])
-				}
+			if len(gotParams) != tt.wantParamCount {
+				t.Errorf("BuildHashtagExcludeSQL() params len = %d; want %d", len(gotParams), tt.wantParamCount)
 			}
 		})
 	}

@@ -21,23 +21,38 @@ func Search(db *sqlx.DB, req *form.SearchRequest) ([]model.TweetsWithName, int, 
 	}
 
 	typeCond := BuildTypeFilterSQL(req.TweetTypeFilter)
+	hashtagCond, hashtagParams := BuildHashtagExcludeSQL(word, req.ExcludeWord)
+
+	var ftsWhere []string
+	var paramsCountFTS []interface{}
+	paramsCountFTS = append(paramsCountFTS, ftsQuery)
+
+	if typeCond != "" {
+		ftsWhere = append(ftsWhere, typeCond)
+	}
+	if hashtagCond != "" {
+		ftsWhere = append(ftsWhere, hashtagCond)
+		paramsCountFTS = append(paramsCountFTS, hashtagParams...)
+	}
+
+	ftsWhereStr := ""
+	if len(ftsWhere) > 0 {
+		ftsWhereStr = " AND " + strings.Join(ftsWhere, " AND ")
+	}
 
 	var total int
-	qCountFTS := `SELECT COUNT(*) FROM tweets t JOIN tweets_fts f ON t.id = f.rowid WHERE tweets_fts MATCH ?`
-	paramsCountFTS := []interface{}{ftsQuery}
-	if typeCond != "" {
-		qCountFTS += " AND " + typeCond
-	}
+	qCountFTS := `SELECT COUNT(*) FROM tweets t JOIN tweets_fts f ON t.id = f.rowid WHERE tweets_fts MATCH ?` + ftsWhereStr
 	_ = db.Get(&total, qCountFTS, paramsCountFTS...)
 
 	qFTS := `SELECT t.*, u.name 
 	         FROM tweets t 
 	         JOIN tweets_fts f ON t.id = f.rowid 
 	         LEFT JOIN users u ON t.user_id = u.id 
-	         WHERE tweets_fts MATCH ?`
+	         WHERE tweets_fts MATCH ?` + ftsWhereStr
+
 	paramsFTS := []interface{}{ftsQuery}
-	if typeCond != "" {
-		qFTS += " AND " + typeCond
+	if hashtagCond != "" {
+		paramsFTS = append(paramsFTS, hashtagParams...)
 	}
 
 	if req.Pagination.LastID != nil {
@@ -64,10 +79,17 @@ func Search(db *sqlx.DB, req *form.SearchRequest) ([]model.TweetsWithName, int, 
 		return nil, 0, nil
 	}
 
-	whereClause := likeCond
+	var likeWhere []string
+	likeWhere = append(likeWhere, likeCond)
 	if typeCond != "" {
-		whereClause += " AND " + typeCond
+		likeWhere = append(likeWhere, typeCond)
 	}
+	if hashtagCond != "" {
+		likeWhere = append(likeWhere, hashtagCond)
+		likeParams = append(likeParams, hashtagParams...)
+	}
+
+	whereClause := strings.Join(likeWhere, " AND ")
 
 	qCountLIKE := "SELECT COUNT(*) FROM tweets t WHERE " + whereClause
 	_ = db.Get(&total, qCountLIKE, likeParams...)
