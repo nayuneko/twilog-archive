@@ -1,7 +1,7 @@
 package xdata
 
 import (
-	"encoding/json"
+	"bytes"
 	"strconv"
 	"time"
 )
@@ -84,9 +84,12 @@ type (
 type XID int64
 
 func (xid *XID) UnmarshalJSON(data []byte) error {
-	var s string
-	if err := json.Unmarshal(data, &s); err == nil {
-		n, err := strconv.ParseInt(s, 10, 64)
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 || bytes.Equal(data, []byte("null")) {
+		return nil
+	}
+	if len(data) >= 2 && data[0] == '"' && data[len(data)-1] == '"' {
+		n, err := strconv.ParseInt(string(data[1:len(data)-1]), 10, 64)
 		if err != nil {
 			return err
 		}
@@ -94,9 +97,8 @@ func (xid *XID) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	// fallback: number directly
-	var n int64
-	if err := json.Unmarshal(data, &n); err != nil {
+	n, err := strconv.ParseInt(string(data), 10, 64)
+	if err != nil {
 		return err
 	}
 	*xid = XID(n)
@@ -106,9 +108,12 @@ func (xid *XID) UnmarshalJSON(data []byte) error {
 type Sint int
 
 func (si *Sint) UnmarshalJSON(data []byte) error {
-	var s string
-	if err := json.Unmarshal(data, &s); err == nil {
-		n, err := strconv.Atoi(s)
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 || bytes.Equal(data, []byte("null")) {
+		return nil
+	}
+	if len(data) >= 2 && data[0] == '"' && data[len(data)-1] == '"' {
+		n, err := strconv.Atoi(string(data[1 : len(data)-1]))
 		if err != nil {
 			return err
 		}
@@ -116,9 +121,8 @@ func (si *Sint) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	// fallback: number directly
-	var n int
-	if err := json.Unmarshal(data, &n); err != nil {
+	n, err := strconv.Atoi(string(data))
+	if err != nil {
 		return err
 	}
 	*si = Sint(n)
@@ -128,10 +132,17 @@ func (si *Sint) UnmarshalJSON(data []byte) error {
 type XCreatedAt time.Time
 
 func (tt *XCreatedAt) UnmarshalJSON(data []byte) error {
-	var s string
-	if err := json.Unmarshal(data, &s); err != nil {
-		return err
+	data = bytes.TrimSpace(data)
+	if len(data) == 0 || bytes.Equal(data, []byte("null")) {
+		return nil
 	}
+	var s string
+	if len(data) >= 2 && data[0] == '"' && data[len(data)-1] == '"' {
+		s = string(data[1 : len(data)-1])
+	} else {
+		s = string(data)
+	}
+
 	// RubyDate形式でパース
 	t, err := time.Parse(time.RubyDate, s)
 	if err != nil {
