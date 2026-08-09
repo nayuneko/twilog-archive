@@ -18,8 +18,10 @@ CREATE TABLE tweets (
 CREATE TABLE users (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
-    last_status_id INTEGER NOT NULL
+    screen_name TEXT,
+    last_status_id INTEGER NOT NULL default 0
 );
+CREATE INDEX IF NOT EXISTS idx_users_screen_name ON users (screen_name);
 
 -- メディア
 CREATE TABLE media (

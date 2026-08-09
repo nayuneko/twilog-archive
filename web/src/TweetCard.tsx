@@ -49,7 +49,9 @@ const TweetCard: React.FC<TweetProps> = ({ tweet }) => {
 
         return safeText.replace(/\n/g, '<br />');
     };
-    const tweetUrl = `https://x.com/${tweet.screen_name}/status/${tweet.id}`
+    const tweetUrl = tweet.retweeted
+        ? `https://x.com/i/web/status/${tweet.id}`
+        : `https://x.com/${tweet.screen_name}/status/${tweet.id}`;
 
     return (
         <div className="border-b border-dashed border-black p-4 bg-white space-y-2 last:border-b-0">

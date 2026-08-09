@@ -7,4 +7,5 @@ const (
 
 	DBFile  = "data/db/tweets.db"
 	JsonDir = "data/json"
+	CSVFile = "data/csv/nayuneko-250707.csv.gz"
 )

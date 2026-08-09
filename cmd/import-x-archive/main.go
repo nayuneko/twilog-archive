@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"compress/gzip"
 	"database/sql"
 	"encoding/csv"
 	"encoding/json"
@@ -64,6 +65,7 @@ func insertAll(sm stmtMap, d *insertData) (int64, error) {
 		if _, err := sm["users"].Exec(
 			u.ID,
 			u.Name,
+			u.ScreenName,
 			d.tweet.ID,
 		); err != nil {
 			return 0, fmt.Errorf("usersの追加に失敗: id = %d, uid = %d, %w", d.tweet.ID, u.ID, err)
@@ -243,8 +245,8 @@ func importTweetsFromReader(db *sqlx.DB, r io.Reader) (int64, error) {
 		name string
 		q    string
 	}{
-		{name: "tweets", q: "INSERT OR IGNORE INTO tweets VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"},
-		{name: "users", q: `INSERT OR IGNORE INTO users (id, name, last_status_id) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, last_status_id = excluded.last_status_id WHERE excluded.last_status_id > users.last_status_id`},
+		{name: "tweets", q: `INSERT INTO tweets (id, created_at, created_date, screen_name, full_text, retweeted, replied, log_type, user_id, embed_media_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET full_text = CASE WHEN length(excluded.full_text) > length(tweets.full_text) THEN excluded.full_text ELSE tweets.full_text END, user_id = COALESCE(excluded.user_id, tweets.user_id)`},
+		{name: "users", q: `INSERT OR IGNORE INTO users (id, name, screen_name, last_status_id) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, screen_name = COALESCE(excluded.screen_name, users.screen_name), last_status_id = excluded.last_status_id WHERE excluded.last_status_id > users.last_status_id`},
 		{name: "media", q: "INSERT OR IGNORE INTO media VALUES (?, ?, ?, ?)"},
 		{name: "urls", q: "INSERT OR IGNORE INTO urls VALUES (?, ?, ?, ?, ?)"},
 		{name: "hashtags", q: "INSERT OR IGNORE INTO hashtags VALUES (?, ?, ?)"},
@@ -357,7 +359,7 @@ func importTweetsFromDir(db *sqlx.DB, dirPath string) error {
 
 func finishImport(db *sqlx.DB) error {
 	// 自分のIDを追加
-	if _, err := db.Exec("INSERT OR IGNORE INTO users VALUES (?, ?, 0)", config.MyUserID, config.MyName); err != nil {
+	if _, err := db.Exec("INSERT OR IGNORE INTO users (id, name, screen_name, last_status_id) VALUES (?, ?, ?, 0)", config.MyUserID, config.MyName, config.MyScreenName); err != nil {
 		return err
 	}
 
@@ -371,7 +373,7 @@ func finishImport(db *sqlx.DB) error {
 }
 
 func updateTwilogDate(db *sqlx.DB) error {
-	csvPath := "./data/csv/nayuneko-250707.csv"
+	csvPath := config.CSVFile
 
 	f, err := os.Open(csvPath)
 	if err != nil {
@@ -379,7 +381,17 @@ func updateTwilogDate(db *sqlx.DB) error {
 	}
 	defer f.Close()
 
-	reader := csv.NewReader(f)
+	var csvReader io.Reader = f
+	if strings.HasSuffix(csvPath, ".gz") {
+		gzr, err := gzip.NewReader(f)
+		if err != nil {
+			return fmt.Errorf("GZIPオープン失敗: %w", err)
+		}
+		defer gzr.Close()
+		csvReader = gzr
+	}
+
+	reader := csv.NewReader(csvReader)
 	reader.LazyQuotes = true
 	reader.FieldsPerRecord = -1
 

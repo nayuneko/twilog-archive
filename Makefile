@@ -1,4 +1,4 @@
-.PHONY: import run clean build-web dev
+.PHONY: import import-twilog run clean build-web dev
 
 GO_BUILD := CGO_ENABLED=1 CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" go build -tags fts5
 
@@ -20,6 +20,9 @@ bin/extract-archive: cmd/extract-archive/main.go
 bin/import-x-archive: cmd/import-x-archive/main.go
 	$(GO_BUILD) -o $@ $^
 
+bin/import-twilog: cmd/import-twilog/main.go
+	$(GO_BUILD) -o $@ $^
+
 bin/mcp-server: cmd/mcp-server/main.go
 	$(GO_BUILD) -o $@ $^
 
@@ -34,3 +37,7 @@ extract-archive: bin/extract-archive
 
 import: bin/import-x-archive
 	./bin/import-x-archive $(ZIP)
+
+import-twilog: bin/import-twilog
+	./bin/import-twilog $(CSV)
+

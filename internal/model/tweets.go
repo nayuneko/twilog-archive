@@ -5,6 +5,11 @@ import "time"
 const (
 	LogTypeTwilog   = 1
 	LogTypeXArchive = 2
+
+	// Twilog CSV ログタイプ
+	TwilogLogTypeTweet    = "1" // ツイート(RT含む)
+	TwilogLogTypeLike     = "2" // いいね
+	TwilogLogTypeBookmark = "3" // ブックマーク
 )
 
 

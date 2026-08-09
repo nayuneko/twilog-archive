@@ -1,5 +1,6 @@
 .DS_Store
 .idea/
-data/
+data/*
+!data/csv/
 bin/
 claude_desktop_config.json
