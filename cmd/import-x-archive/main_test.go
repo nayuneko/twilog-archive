@@ -25,6 +25,7 @@ CREATE TABLE tweets (
 CREATE TABLE users (
     id INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
+    screen_name TEXT,
     last_status_id INTEGER NOT NULL
 );
 

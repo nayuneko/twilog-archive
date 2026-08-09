@@ -132,11 +132,14 @@ func makeTweetResponse(db *sqlx.DB, tweets []model.TweetsWithName) ([]TweetRespo
 			Text:       removeMediaURLFromEnd(t.FullText, t.EmbedMediaURL),
 			ScreenName: t.ScreenName,
 			Name: func() *string {
-				if t.UserID == nil {
+				if t.UserID != nil && t.Name != nil {
+					return t.Name
+				}
+				if t.ScreenName == config.MyScreenName {
 					name := config.MyName
 					return &name
 				}
-				return t.Name
+				return nil
 			}(),
 			Created:   t.CreatedAt.In(time.Local).Format("2006/01/02 15:04:05"),
 			Retweeted: t.Retweeted,

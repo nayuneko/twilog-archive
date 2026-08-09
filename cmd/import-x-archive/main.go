@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"compress/gzip"
 	"database/sql"
 	"encoding/csv"
 	"encoding/json"
@@ -68,7 +69,7 @@ func insertBatch(tx *sql.Tx, batch []*insertData) (int64, error) {
 		chunk := batch[i:end]
 
 		var sb strings.Builder
-		sb.WriteString("INSERT OR IGNORE INTO tweets VALUES ")
+		sb.WriteString("INSERT INTO tweets (id, created_at, created_date, screen_name, full_text, retweeted, replied, log_type, user_id, embed_media_url) VALUES ")
 		args := make([]interface{}, 0, len(chunk)*10)
 
 		for idx, d := range chunk {
@@ -89,6 +90,7 @@ func insertBatch(tx *sql.Tx, batch []*insertData) (int64, error) {
 				d.tweet.EmbedMediaURL,
 			)
 		}
+		sb.WriteString(" ON CONFLICT(id) DO UPDATE SET full_text = CASE WHEN length(excluded.full_text) > length(tweets.full_text) THEN excluded.full_text ELSE tweets.full_text END, user_id = COALESCE(excluded.user_id, tweets.user_id)")
 
 		res, err := tx.Exec(sb.String(), args...)
 		if err != nil {
@@ -98,7 +100,7 @@ func insertBatch(tx *sql.Tx, batch []*insertData) (int64, error) {
 		totalTweetsInserted += rows
 	}
 
-	// 2. users (chunk size 100, 3 params per row = 300 params)
+	// 2. users (chunk size 100, 4 params per row = 400 params)
 	var allUsers []model.Users
 	for _, d := range batch {
 		allUsers = append(allUsers, d.users...)
@@ -113,17 +115,17 @@ func insertBatch(tx *sql.Tx, batch []*insertData) (int64, error) {
 			chunk := allUsers[i:end]
 
 			var sb strings.Builder
-			sb.WriteString("INSERT OR IGNORE INTO users (id, name, last_status_id) VALUES ")
-			args := make([]interface{}, 0, len(chunk)*3)
+			sb.WriteString("INSERT OR IGNORE INTO users (id, name, screen_name, last_status_id) VALUES ")
+			args := make([]interface{}, 0, len(chunk)*4)
 
 			for idx, u := range chunk {
 				if idx > 0 {
 					sb.WriteString(",")
 				}
-				sb.WriteString("(?,?,?)")
-				args = append(args, u.ID, u.Name, u.LastStatusID)
+				sb.WriteString("(?,?,?,?)")
+				args = append(args, u.ID, u.Name, u.ScreenName, u.LastStatusID)
 			}
-			sb.WriteString(" ON CONFLICT(id) DO UPDATE SET name = excluded.name, last_status_id = excluded.last_status_id WHERE excluded.last_status_id > users.last_status_id")
+			sb.WriteString(" ON CONFLICT(id) DO UPDATE SET name = excluded.name, screen_name = COALESCE(excluded.screen_name, users.screen_name), last_status_id = excluded.last_status_id WHERE excluded.last_status_id > users.last_status_id")
 
 			if _, err := tx.Exec(sb.String(), args...); err != nil {
 				return 0, fmt.Errorf("usersのバッチ追加に失敗: %w", err)
@@ -267,6 +269,7 @@ func createUsers(t *xdata.Tweet, tweets *model.Tweets) []model.Users {
 		r = append(r, model.Users{
 			ID:           uid,
 			Name:         u.Name,
+			ScreenName:   u.ScreenName,
 			LastStatusID: int64(t.ID),
 		})
 		if tweets.Retweeted && tweets.ScreenName == u.ScreenName {
@@ -491,7 +494,7 @@ func importTweetsFromDir(db *sqlx.DB, dirPath string) error {
 
 func finishImport(db *sqlx.DB) error {
 	// 自分のIDを追加
-	if _, err := db.Exec("INSERT OR IGNORE INTO users VALUES (?, ?, 0)", config.MyUserID, config.MyName); err != nil {
+	if _, err := db.Exec("INSERT OR IGNORE INTO users (id, name, screen_name, last_status_id) VALUES (?, ?, ?, 0)", config.MyUserID, config.MyName, config.MyScreenName); err != nil {
 		return err
 	}
 
@@ -505,7 +508,7 @@ func finishImport(db *sqlx.DB) error {
 }
 
 func updateTwilogDate(db *sqlx.DB) error {
-	csvPath := "./data/csv/nayuneko-250707.csv"
+	csvPath := config.CSVFile
 
 	f, err := os.Open(csvPath)
 	if err != nil {
@@ -513,7 +516,17 @@ func updateTwilogDate(db *sqlx.DB) error {
 	}
 	defer f.Close()
 
-	reader := csv.NewReader(f)
+	var csvReader io.Reader = f
+	if strings.HasSuffix(csvPath, ".gz") {
+		gzr, err := gzip.NewReader(f)
+		if err != nil {
+			return fmt.Errorf("GZIPオープン失敗: %w", err)
+		}
+		defer gzr.Close()
+		csvReader = gzr
+	}
+
+	reader := csv.NewReader(csvReader)
 	reader.LazyQuotes = true
 	reader.FieldsPerRecord = -1
 
