@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Calendar from './Calendar';
 
@@ -15,6 +15,18 @@ const Layout: React.FC<Props> = ({ children, date, query = '', excludeQuery = ''
     const [excludeWord, setExcludeWord] = useState(excludeQuery);
     const [searchType, setSearchType] = useState<'and' | 'or'>(initialSearchType);
     const navigate = useNavigate();
+
+    useEffect(() => {
+        setSearchQuery(query);
+    }, [query]);
+
+    useEffect(() => {
+        setExcludeWord(excludeQuery);
+    }, [excludeQuery]);
+
+    useEffect(() => {
+        setSearchType(initialSearchType);
+    }, [initialSearchType]);
 
     const handleSearchSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -69,25 +81,33 @@ const Layout: React.FC<Props> = ({ children, date, query = '', excludeQuery = ''
                                     className="w-full border p-[3px] rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-black bg-gray-50"
                                 />
                             </div>
-                            <div className="pt-1 text-center text-xs text-gray-600">
-                                <label className="pr-2 cursor-pointer">
-                                    <input
-                                        type="radio"
-                                        name="search_type"
-                                        value="and"
-                                        checked={searchType === 'and'}
-                                        onChange={() => setSearchType('and')}
-                                    /> AND検索
-                                </label>
-                                <label className="cursor-pointer">
-                                    <input
-                                        type="radio"
-                                        name="search_type"
-                                        value="or"
-                                        checked={searchType === 'or'}
-                                        onChange={() => setSearchType('or')}
-                                    /> OR検索
-                                </label>
+                            <div className="pt-1 text-center text-xs text-gray-600 flex items-center justify-between">
+                                <div>
+                                    <label className="pr-2 cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name="search_type"
+                                            value="and"
+                                            checked={searchType === 'and'}
+                                            onChange={() => setSearchType('and')}
+                                        /> AND
+                                    </label>
+                                    <label className="cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name="search_type"
+                                            value="or"
+                                            checked={searchType === 'or'}
+                                            onChange={() => setSearchType('or')}
+                                        /> OR
+                                    </label>
+                                </div>
+                                <button
+                                    type="submit"
+                                    className="px-3 py-1 bg-gray-800 hover:bg-black text-white text-xs rounded-sm transition-colors cursor-pointer font-medium"
+                                >
+                                    検索
+                                </button>
                             </div>
                         </form>
                     </div>
