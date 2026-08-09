@@ -38,12 +38,14 @@ func setupDB(db *sql.DB) error {
 }
 
 func main() {
+	// ファイルパス・DBパスの設定
 	csvPath := "./data/csv/nayuneko-250707.csv"
 	if len(os.Args) >= 2 && os.Args[1] != "" {
 		csvPath = os.Args[1]
 	}
 	dbPath := config.DBFile
 
+	// SQLiteに接続
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		log.Fatalf("DB接続失敗: %v", err)
@@ -54,6 +56,7 @@ func main() {
 		log.Printf("DB PRAGMA設定警告: %v", err)
 	}
 
+	// CSVオープン
 	f, err := os.Open(csvPath)
 	if err != nil {
 		log.Fatalf("CSVオープン失敗: %v", err)
@@ -62,7 +65,7 @@ func main() {
 
 	reader := csv.NewReader(f)
 	reader.LazyQuotes = true
-	reader.FieldsPerRecord = -1
+	reader.FieldsPerRecord = -1 // 可変長レコード対応
 
 	startTime := time.Now()
 	log.Printf("Twilog CSV インポート開始: %s", csvPath)
@@ -101,7 +104,7 @@ func main() {
 
 		if len(record) < 5 {
 			skippedCount++
-			continue
+			continue // 欠落行はスキップ
 		}
 
 		idStr := record[0]
@@ -110,6 +113,7 @@ func main() {
 		text := record[3]
 		logType := record[4]
 
+		// ログタイプは1:ツイート(RT含む)、2:いいね、3:ブックマーク
 		if logType != "1" {
 			skippedCount++
 			continue
@@ -121,12 +125,14 @@ func main() {
 			continue
 		}
 
+		// 投稿日時のパース
 		createdAt, err := time.Parse("2006-01-02 15:04:05", dateStr)
 		if err != nil {
 			skippedCount++
 			continue
 		}
 
+		// RT判定
 		match := re.FindStringSubmatch(url)
 		if len(match) < 2 {
 			skippedCount++
