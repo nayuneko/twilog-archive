@@ -9,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 	"twilog-archive/internal/config"
 	"twilog-archive/internal/model"
@@ -71,7 +72,7 @@ func main() {
 	}
 	defer tx.Rollback()
 
-	q := `INSERT OR IGNORE INTO tweets (id, created_at, created_date, screen_name, full_text, retweeted, log_type) VALUES (?, ?, ?, ?, ?, ?, ?)`
+	q := `INSERT INTO tweets (id, created_at, created_date, screen_name, full_text, retweeted, log_type) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET screen_name = excluded.screen_name, retweeted = excluded.retweeted`
 	stmt, err := tx.Prepare(q)
 	if err != nil {
 		log.Fatalf("ステートメント作成失敗: %v", err)
@@ -125,6 +126,12 @@ func main() {
 			continue
 		}
 		screenName := match[1]
+		if screenName == config.MyScreenName && strings.HasPrefix(text, "RT @") {
+			rest := text[4:]
+			if idx := strings.Index(rest, ":"); idx != -1 {
+				screenName = rest[:idx]
+			}
+		}
 		retweeted := screenName != config.MyScreenName
 
 		createdDate := createdAt.In(time.Local).Format("20060102")

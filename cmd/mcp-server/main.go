@@ -75,9 +75,11 @@ func main() {
 		var sb strings.Builder
 		sb.WriteString(fmt.Sprintf("検索結果: '%s' (%d件)\n\n", query, len(tweets)))
 		for _, t := range tweets {
-			name := config.MyName
+			name := "@" + t.ScreenName
 			if t.Name != nil {
 				name = *t.Name
+			} else if t.ScreenName == config.MyScreenName {
+				name = config.MyName
 			}
 			sb.WriteString(fmt.Sprintf("[%s] %s (@%s) (ID: %d)\n%s\n---\n",
 				t.CreatedAt.Format("2006-01-02 15:04:05"), name, t.ScreenName, t.ID, t.FullText))
@@ -110,9 +112,11 @@ func main() {
 		var sb strings.Builder
 		sb.WriteString(fmt.Sprintf("%s のツイート一覧 (%d件):\n\n", dateStr, len(tweets)))
 		for _, t := range tweets {
-			name := config.MyName
+			name := "@" + t.ScreenName
 			if t.Name != nil {
 				name = *t.Name
+			} else if t.ScreenName == config.MyScreenName {
+				name = config.MyName
 			}
 			sb.WriteString(fmt.Sprintf("[%s] %s (@%s) (ID: %d)\n%s\n---\n",
 				t.CreatedAt.Format("15:04:05"), name, t.ScreenName, t.ID, t.FullText))
@@ -134,9 +138,11 @@ func main() {
 		var sb strings.Builder
 		sb.WriteString(fmt.Sprintf("最新のツイート (%d件):\n\n", len(tweets)))
 		for _, t := range tweets {
-			name := config.MyName
+			name := "@" + t.ScreenName
 			if t.Name != nil {
 				name = *t.Name
+			} else if t.ScreenName == config.MyScreenName {
+				name = config.MyName
 			}
 			sb.WriteString(fmt.Sprintf("[%s] %s (@%s) (ID: %d)\n%s\n---\n",
 				t.CreatedAt.Format("2006-01-02 15:04:05"), name, t.ScreenName, t.ID, t.FullText))
