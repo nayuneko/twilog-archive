@@ -22,6 +22,7 @@ import (
 
 	"twilog-archive/internal/config"
 	"twilog-archive/internal/model"
+	"twilog-archive/internal/text"
 	"twilog-archive/internal/xdata"
 )
 
@@ -110,12 +111,12 @@ func insertAll(sm stmtMap, d *insertData) (int64, error) {
 func createTweets(t *xdata.Tweet) *model.Tweets {
 
 	screenName := config.MyScreenName
-	fullText := t.FullText
+	fullText := text.UnescapeHTML(t.FullText)
 
 	// RT @xxxx: から始まるツイートの場合RT
-	if strings.HasPrefix(t.FullText, "RT @") {
+	if strings.HasPrefix(fullText, "RT @") {
 		// "RT @" を取り除く
-		rest := t.FullText[4:]
+		rest := fullText[4:]
 		// ":" の位置を探す
 		if idx := strings.Index(rest, ":"); idx != -1 {
 			screenName = rest[:idx]

@@ -14,6 +14,7 @@ import (
 	"time"
 	"twilog-archive/internal/config"
 	"twilog-archive/internal/model"
+	"twilog-archive/internal/text"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -118,7 +119,7 @@ func main() {
 		idStr := record[0]
 		url := record[1]
 		dateStr := record[2]
-		text := record[3]
+		text := text.UnescapeHTML(record[3])
 		logType := record[4]
 
 		// ログタイプは1:ツイート(RT含む)、2:いいね、3:ブックマーク
