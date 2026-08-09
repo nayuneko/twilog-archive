@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import type { TweetResponseTweet } from '../types/tweet';
+import MediaEmbed from './MediaEmbed';
 
 type TweetProps = {
     tweet: TweetResponseTweet;
@@ -82,6 +83,7 @@ const TweetCard: React.FC<TweetProps> = ({ tweet }) => {
                     ))}
                 </div>
             )}
+            <MediaEmbed urls={tweet.urls} />
             <div className="flex items-center gap-2 text-sm text-gray-500">
                 {tweet.retweeted && (
                     <div>🔁 retweeted at</div>

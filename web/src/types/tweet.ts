@@ -15,7 +15,7 @@ export type TweetResponseTweet = {
     hashtags?: string[];
 }
 
-type Urls = {
+export type Urls = {
     url: string;
     expanded_url: string;
     display_url: string;
