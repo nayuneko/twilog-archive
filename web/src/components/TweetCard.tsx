@@ -1,22 +1,22 @@
-import React from 'react';
-import type { TweetResponseTweet } from './types/tweet'
+import React, { useMemo } from 'react';
+import type { TweetResponseTweet } from '../types/tweet';
 
 type TweetProps = {
-    tweet: TweetResponseTweet
+    tweet: TweetResponseTweet;
+};
+
+const escapeHtml = (str: string) => {
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 };
 
 const TweetCard: React.FC<TweetProps> = ({ tweet }) => {
-    const escapeHtml = (str: string) => {
-        return str
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-    };
-
-    const formatText = (text: string) => {
-        let safeText = escapeHtml(text);
+    const formattedText = useMemo(() => {
+        let safeText = escapeHtml(tweet.text);
 
         if (tweet.urls) {
             tweet.urls.forEach(u => {
@@ -48,7 +48,8 @@ const TweetCard: React.FC<TweetProps> = ({ tweet }) => {
         );
 
         return safeText.replace(/\n/g, '<br />');
-    };
+    }, [tweet.text, tweet.urls, tweet.hashtags]);
+
     const tweetUrl = tweet.retweeted
         ? `https://x.com/i/web/status/${tweet.id}`
         : `https://x.com/${tweet.screen_name}/status/${tweet.id}`;
@@ -67,13 +68,13 @@ const TweetCard: React.FC<TweetProps> = ({ tweet }) => {
             </div>
             <div
                 className="text-base leading-relaxed"
-                dangerouslySetInnerHTML={{__html: formatText(tweet.text)}}
+                dangerouslySetInnerHTML={{ __html: formattedText }}
             />
             {tweet.media && tweet.media.length > 0 && (
-                <div className="flex pt-2">
-                    {tweet.media.map((url, i) => (
+                <div className="flex pt-2 gap-1 overflow-x-auto">
+                    {tweet.media.map((url) => (
                         <img
-                            key={i}
+                            key={url}
                             src={`${url}:thumb`}
                             alt="media"
                             className="rounded-xl max-h-30 object-cover pr-1"
@@ -91,7 +92,11 @@ const TweetCard: React.FC<TweetProps> = ({ tweet }) => {
                 {!tweet.retweeted && (
                     <div>created at</div>
                 )}
-                <div><a href={tweetUrl} target="_blank">{tweet.created}</a></div>
+                <div>
+                    <a href={tweetUrl} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                        {tweet.created}
+                    </a>
+                </div>
             </div>
         </div>
     );
