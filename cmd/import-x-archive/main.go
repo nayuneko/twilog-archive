@@ -372,7 +372,7 @@ func finishImport(db *sqlx.DB) error {
 }
 
 func updateTwilogDate(db *sqlx.DB) error {
-	csvPath := "./data/csv/nayuneko-250707.csv"
+	csvPath := config.CSVFile
 
 	f, err := os.Open(csvPath)
 	if err != nil {

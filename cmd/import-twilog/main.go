@@ -38,7 +38,7 @@ func setupDB(db *sql.DB) error {
 }
 
 func main() {
-	csvPath := "./data/csv/nayuneko-250707.csv"
+	csvPath := config.CSVFile
 	if len(os.Args) >= 2 && os.Args[1] != "" {
 		csvPath = os.Args[1]
 	}
