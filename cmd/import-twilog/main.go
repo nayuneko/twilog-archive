@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/csv"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"regexp"
@@ -19,37 +20,80 @@ var (
 	re = regexp.MustCompile(`https://x\.com/([^/]+)/status/`)
 )
 
-func main() {
-	// ファイルパス・DBパスの設定
-	csvPath := "./data/csv/nayuneko-250707.csv"
-	dbPath := "./data/db/tweets.db"
+func setupDB(db *sql.DB) error {
+	pragmas := []string{
+		"PRAGMA journal_mode = WAL;",
+		"PRAGMA synchronous = NORMAL;",
+		"PRAGMA cache_size = -64000;",
+		"PRAGMA temp_store = MEMORY;",
+	}
+	for _, p := range pragmas {
+		if _, err := db.Exec(p); err != nil {
+			return fmt.Errorf("PRAGMA設定失敗 (%s): %w", p, err)
+		}
+	}
+	return nil
+}
 
-	// SQLiteに接続
+func main() {
+	csvPath := "./data/csv/nayuneko-250707.csv"
+	if len(os.Args) >= 2 && os.Args[1] != "" {
+		csvPath = os.Args[1]
+	}
+	dbPath := config.DBFile
+
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("DB接続失敗: %v", err)
 	}
 	defer db.Close()
 
-	// CSVオープン
+	if err := setupDB(db); err != nil {
+		log.Printf("DB PRAGMA設定警告: %v", err)
+	}
+
 	f, err := os.Open(csvPath)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("CSVオープン失敗: %v", err)
 	}
 	defer f.Close()
 
 	reader := csv.NewReader(f)
 	reader.LazyQuotes = true
-	reader.FieldsPerRecord = -1 // 可変長レコード対応
+	reader.FieldsPerRecord = -1
+
+	startTime := time.Now()
+	log.Printf("Twilog CSV インポート開始: %s", csvPath)
+
+	tx, err := db.Begin()
+	if err != nil {
+		log.Fatalf("トランザクション開始失敗: %v", err)
+	}
+	defer tx.Rollback()
+
+	q := `INSERT OR IGNORE INTO tweets (id, created_at, created_date, screen_name, full_text, retweeted, log_type) VALUES (?, ?, ?, ?, ?, ?, ?)`
+	stmt, err := tx.Prepare(q)
+	if err != nil {
+		log.Fatalf("ステートメント作成失敗: %v", err)
+	}
+	defer stmt.Close()
+
+	var insertedCount, skippedCount int
+	batchSize := 5000
 
 	for {
 		record, err := reader.Read()
-		if err != nil {
+		if err == io.EOF {
 			break
+		}
+		if err != nil {
+			skippedCount++
+			continue
 		}
 
 		if len(record) < 5 {
-			continue // 欠落行はスキップ
+			skippedCount++
+			continue
 		}
 
 		idStr := record[0]
@@ -58,37 +102,34 @@ func main() {
 		text := record[3]
 		logType := record[4]
 
-		// ログタイプは1:ツイート(RT含む)、2:いいね、3:ブックマーク
 		if logType != "1" {
+			skippedCount++
 			continue
 		}
 
-		id, _ := strconv.ParseInt(idStr, 10, 64)
+		id, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
+			skippedCount++
+			continue
+		}
 
-		// 投稿日時のパース
 		createdAt, err := time.Parse("2006-01-02 15:04:05", dateStr)
 		if err != nil {
-			log.Printf("スキップ: 行 %s（日時パース失敗）: %v\n", idStr, err)
+			skippedCount++
 			continue
 		}
 
-		// RT判定
-		var retweeted bool
-		var screenName string
 		match := re.FindStringSubmatch(url)
-		if len(match) >= 2 {
-			screenName = match[1]
-			retweeted = screenName != config.MyScreenName
-		} else {
-			fmt.Println("マッチしませんでした")
+		if len(match) < 2 {
+			skippedCount++
 			continue
 		}
+		screenName := match[1]
+		retweeted := screenName != config.MyScreenName
 
 		createdDate := createdAt.In(time.Local).Format("20060102")
 
-		q := `INSERT OR IGNORE INTO tweets (id, created_at, created_date, screen_name, full_text, retweeted, log_type) VALUES (?, ?, ?, ?, ?, ?, ?)`
-		_, err = db.Exec(
-			q,
+		_, err = stmt.Exec(
 			id,
 			createdAt.Format(time.RFC3339),
 			createdDate,
@@ -98,8 +139,40 @@ func main() {
 			model.LogTypeTwilog,
 		)
 		if err != nil {
-			log.Printf("スキップ: 行 %s（INSERT失敗）: %v\n", idStr, err)
+			log.Printf("INSERT失敗: id=%d: %v", id, err)
+			skippedCount++
+			continue
+		}
+
+		insertedCount++
+		if insertedCount%batchSize == 0 {
+			if err := stmt.Close(); err != nil {
+				log.Fatalf("ステートメントクローズ失敗: %v", err)
+			}
+			if err := tx.Commit(); err != nil {
+				log.Fatalf("コミット失敗: %v", err)
+			}
+
+			tx, err = db.Begin()
+			if err != nil {
+				log.Fatalf("トランザクション開始失敗: %v", err)
+			}
+			stmt, err = tx.Prepare(q)
+			if err != nil {
+				log.Fatalf("ステートメント作成失敗: %v", err)
+			}
+
+			log.Printf("進捗: %d 件処理済み...", insertedCount)
 		}
 	}
-	fmt.Println("インポート完了！")
+
+	if err := stmt.Close(); err != nil {
+		log.Fatalf("ステートメントクローズ失敗: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		log.Fatalf("コミット失敗: %v", err)
+	}
+
+	log.Printf("インポート完了！ 処理件数: %d 件, スキップ件数: %d 件 (所要時間: %v)", insertedCount, skippedCount, time.Since(startTime))
 }
+
