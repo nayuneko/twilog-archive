@@ -38,14 +38,12 @@ func setupDB(db *sql.DB) error {
 }
 
 func main() {
-	// ファイルパス・DBパスの設定
 	csvPath := "./data/csv/nayuneko-250707.csv"
 	if len(os.Args) >= 2 && os.Args[1] != "" {
 		csvPath = os.Args[1]
 	}
 	dbPath := config.DBFile
 
-	// SQLiteに接続
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		log.Fatalf("DB接続失敗: %v", err)
@@ -56,7 +54,6 @@ func main() {
 		log.Printf("DB PRAGMA設定警告: %v", err)
 	}
 
-	// CSVオープン
 	f, err := os.Open(csvPath)
 	if err != nil {
 		log.Fatalf("CSVオープン失敗: %v", err)
