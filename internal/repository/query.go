@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 	"twilog-archive/internal/form"
@@ -100,6 +101,41 @@ func BuildFTSQuery(input string, excludeInput string, searchType string) string 
 	return mainExpr + " " + strings.Join(excParts, " ")
 }
 
+// BuildHashtagExcludeSQL は除外指定されたハッシュタグ（#タグ）についてのサブクエリ WHERE 条件を生成する
+func BuildHashtagExcludeSQL(input string, excludeInput string) (string, []interface{}) {
+	_, excTokens := parseCombinedInput(input, excludeInput)
+	var tags []string
+
+	for _, t := range excTokens {
+		clean := strings.TrimSpace(t.text)
+		if strings.HasPrefix(clean, "#") || strings.HasPrefix(clean, "＃") {
+			rawTag := strings.TrimPrefix(strings.TrimPrefix(clean, "#"), "＃")
+			if rawTag != "" {
+				tags = append(tags, rawTag, "#"+rawTag, "＃"+rawTag)
+			}
+		}
+	}
+
+	if len(tags) == 0 {
+		return "", nil
+	}
+
+	uniqueMap := make(map[string]bool)
+	var placeholders []string
+	var params []interface{}
+
+	for _, tag := range tags {
+		if !uniqueMap[tag] {
+			uniqueMap[tag] = true
+			placeholders = append(placeholders, "?")
+			params = append(params, tag)
+		}
+	}
+
+	sqlCond := fmt.Sprintf("t.id NOT IN (SELECT tweet_id FROM hashtags WHERE tag IN (%s))", strings.Join(placeholders, ", "))
+	return sqlCond, params
+}
+
 // formatFTSToken はトークンを FTS5 構文用にフォーマットする
 func formatFTSToken(t parsedToken) string {
 	escaped := strings.ReplaceAll(t.text, "\"", "\"\"")
@@ -122,7 +158,7 @@ func parseSearchInput(input string) []parsedToken {
 
 	var tokens []parsedToken
 	// 1: ダブルクォートで囲まれたフレーズ (例: "hello world" または -"hello world")
-	// 2: マイナスで始まる単語 (例: -python)
+	// 2: マイナスまたはハッシュで始まる単語
 	// 3: 通常の単語
 	re := regexp.MustCompile(`(-?"[^"]+")|(-[^\s]+)|([^\s]+)`)
 	matches := re.FindAllString(input, -1)
@@ -135,7 +171,6 @@ func parseSearchInput(input string) []parsedToken {
 			continue
 		}
 		if (match == "NOT" || match == "not") && i+1 < len(matches) {
-			// 次のトークンを NOT 扱いにする
 			nextToken := matches[i+1]
 			i++
 			tokens = append(tokens, parseSingleToken(nextToken, true))
