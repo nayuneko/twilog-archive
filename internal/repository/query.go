@@ -4,8 +4,13 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode/utf8"
+
 	"twilog-archive/internal/form"
 )
+
+// trigramMinChars は FTS5 Trigram Tokenizer が検索可能な最小文字数 (Unicode rune 単位)
+const trigramMinChars = 3
 
 // BuildTypeFilterSQL は TweetTypeFilter から SQL WHERE 条件節を生成する
 func BuildTypeFilterSQL(filter form.TweetTypeFilter) string {
@@ -296,3 +301,114 @@ func parseCombinedInput(input string, excludeInput string) ([]parsedToken, []par
 
 	return incTokens, excTokens
 }
+
+// isFTSCompatible はトークンが FTS5 Trigram Tokenizer で検索可能かどうかを返す。
+// Trigram Tokenizer は最低3文字（Unicode rune 単位）必要。
+func isFTSCompatible(text string) bool {
+	return utf8.RuneCountInString(text) >= trigramMinChars
+}
+
+// HybridSearchResult は FTS5 と LIKE を組み合わせたハイブリッド検索の構成要素を保持する
+type HybridSearchResult struct {
+	// FTSQuery は FTS5 MATCH 式（3文字以上のトークンのみ）。空文字の場合は FTS5 不使用。
+	FTSQuery string
+	// LikeConds は 2文字以下トークン用の SQL LIKE 条件式の配列 (例: "t.full_text LIKE ?")
+	LikeConds []string
+	// LikeParams は LikeConds に対応するパラメータ
+	LikeParams []interface{}
+	// HasFTS は FTS5 を使用する検索トークンが1つ以上あるかどうか
+	HasFTS bool
+}
+
+// BuildHybridSearchQuery は入力を解析し、FTS5 互換トークン（3文字以上）は MATCH 式に、
+// 2文字以下のトークンは LIKE 条件に分離した HybridSearchResult を返す。
+func BuildHybridSearchQuery(input string, excludeInput string, searchType string) HybridSearchResult {
+	incTokens, excTokens := parseCombinedInput(input, excludeInput)
+	if len(incTokens) == 0 {
+		return HybridSearchResult{}
+	}
+
+	defaultOp := "AND"
+	if strings.ToLower(searchType) == "or" {
+		defaultOp = "OR"
+	}
+
+	var ftsIncParts []string
+	var likeIncConds []string
+	var likeParams []interface{}
+	var currentOp string
+
+	for _, t := range incTokens {
+		if t.isOp {
+			if strings.ToUpper(t.text) == "OR" || t.text == "|" {
+				currentOp = "OR"
+			}
+			continue
+		}
+
+		op := defaultOp
+		if currentOp != "" {
+			op = currentOp
+			currentOp = ""
+		}
+
+		if isFTSCompatible(t.text) {
+			// 3文字以上: FTS5 MATCH 式に追加
+			expr := formatFTSToken(t)
+			if len(ftsIncParts) == 0 {
+				ftsIncParts = append(ftsIncParts, expr)
+			} else {
+				ftsIncParts = append(ftsIncParts, op, expr)
+			}
+		} else {
+			// 2文字以下: LIKE 条件に追加
+			if op == "OR" && len(likeIncConds) > 0 {
+				likeIncConds = append(likeIncConds, "OR t.full_text LIKE ?")
+			} else {
+				likeIncConds = append(likeIncConds, "t.full_text LIKE ?")
+			}
+			likeParams = append(likeParams, "%"+t.text+"%")
+		}
+	}
+
+	// FTS5 側の MATCH 式を組み立て
+	var ftsQuery string
+	if len(ftsIncParts) > 0 {
+		if len(ftsIncParts) > 1 {
+			ftsQuery = "(" + strings.Join(ftsIncParts, " ") + ")"
+		} else {
+			ftsQuery = ftsIncParts[0]
+		}
+
+		// 除外トークン（3文字以上）は FTS MATCH 式に NOT で追加
+		var ftsExcParts []string
+		var likeExcConds []string
+		for _, t := range excTokens {
+			t.isNot = true
+			if isFTSCompatible(t.text) {
+				ftsExcParts = append(ftsExcParts, formatFTSToken(t))
+			} else {
+				likeExcConds = append(likeExcConds, "t.full_text NOT LIKE ?")
+				likeParams = append(likeParams, "%"+t.text+"%")
+			}
+		}
+		if len(ftsExcParts) > 0 {
+			ftsQuery += " " + strings.Join(ftsExcParts, " ")
+		}
+		likeIncConds = append(likeIncConds, likeExcConds...)
+	} else {
+		// FTS5 対象トークンが無い場合、除外は全て LIKE で処理
+		for _, t := range excTokens {
+			likeIncConds = append(likeIncConds, "t.full_text NOT LIKE ?")
+			likeParams = append(likeParams, "%"+t.text+"%")
+		}
+	}
+
+	return HybridSearchResult{
+		FTSQuery:   ftsQuery,
+		LikeConds:  likeIncConds,
+		LikeParams: likeParams,
+		HasFTS:     len(ftsIncParts) > 0,
+	}
+}
+
