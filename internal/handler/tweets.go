@@ -38,13 +38,29 @@ type (
 	}
 )
 
+func parseTypeFilter(c echo.Context) form.TweetTypeFilter {
+	parseBool := func(param string, defaultVal bool) bool {
+		val := c.QueryParam(param)
+		if val == "" {
+			return defaultVal
+		}
+		return val == "1" || val == "true"
+	}
+	return form.TweetTypeFilter{
+		IncludeNormal: parseBool("normal", true),
+		IncludeReply:  parseBool("reply", true),
+		IncludeRT:     parseBool("rt", true),
+	}
+}
+
 func TweetsLatest(db *sqlx.DB) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		req := new(form.Pagination)
 		if err := c.Bind(req); err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "Invalid request: " + err.Error()})
 		}
-		tweets, err := repository.Latest(db, req.LastID)
+		filter := parseTypeFilter(c)
+		tweets, err := repository.Latest(db, req.LastID, filter)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to fetch tweets: "+err.Error())
 		}
@@ -60,7 +76,8 @@ func TweetsLatest(db *sqlx.DB) echo.HandlerFunc {
 func TweetsDates(db *sqlx.DB) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		date := c.Param("date")
-		tweets, err := repository.FindByDates(db, date)
+		filter := parseTypeFilter(c)
+		tweets, err := repository.FindByDates(db, date, filter)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to fetch tweets by date: "+err.Error())
 		}
@@ -80,10 +97,12 @@ func TweetsSearch(db *sqlx.DB) echo.HandlerFunc {
 			notWord = c.QueryParam("exclude")
 		}
 		searchType := c.QueryParam("type")
+		filter := parseTypeFilter(c)
 		req := &form.SearchRequest{
-			SearchWord:  q,
-			ExcludeWord: notWord,
-			SearchType:  searchType,
+			SearchWord:      q,
+			ExcludeWord:     notWord,
+			SearchType:      searchType,
+			TweetTypeFilter: filter,
 		}
 		tweets, totalCount, err := repository.Search(db, req)
 		if err != nil {

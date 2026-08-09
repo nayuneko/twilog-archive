@@ -20,9 +20,15 @@ func Search(db *sqlx.DB, req *form.SearchRequest) ([]model.TweetsWithName, int, 
 		return nil, 0, nil
 	}
 
+	typeCond := BuildTypeFilterSQL(req.TweetTypeFilter)
+
 	var total int
-	qCountFTS := `SELECT COUNT(*) FROM tweets_fts WHERE tweets_fts MATCH ?`
-	_ = db.Get(&total, qCountFTS, ftsQuery)
+	qCountFTS := `SELECT COUNT(*) FROM tweets t JOIN tweets_fts f ON t.id = f.rowid WHERE tweets_fts MATCH ?`
+	paramsCountFTS := []interface{}{ftsQuery}
+	if typeCond != "" {
+		qCountFTS += " AND " + typeCond
+	}
+	_ = db.Get(&total, qCountFTS, paramsCountFTS...)
 
 	qFTS := `SELECT t.*, u.name 
 	         FROM tweets t 
@@ -30,6 +36,9 @@ func Search(db *sqlx.DB, req *form.SearchRequest) ([]model.TweetsWithName, int, 
 	         LEFT JOIN users u ON t.user_id = u.id 
 	         WHERE tweets_fts MATCH ?`
 	paramsFTS := []interface{}{ftsQuery}
+	if typeCond != "" {
+		qFTS += " AND " + typeCond
+	}
 
 	if req.Pagination.LastID != nil {
 		qFTS += " AND t.id < ?"
@@ -55,10 +64,15 @@ func Search(db *sqlx.DB, req *form.SearchRequest) ([]model.TweetsWithName, int, 
 		return nil, 0, nil
 	}
 
-	qCountLIKE := "SELECT COUNT(*) FROM tweets t WHERE " + likeCond
+	whereClause := likeCond
+	if typeCond != "" {
+		whereClause += " AND " + typeCond
+	}
+
+	qCountLIKE := "SELECT COUNT(*) FROM tweets t WHERE " + whereClause
 	_ = db.Get(&total, qCountLIKE, likeParams...)
 
-	qLIKE := "SELECT t.*, u.name FROM tweets t LEFT JOIN users u ON t.user_id = u.id WHERE " + likeCond
+	qLIKE := "SELECT t.*, u.name FROM tweets t LEFT JOIN users u ON t.user_id = u.id WHERE " + whereClause
 	if req.Pagination.LastID != nil {
 		qLIKE += " AND t.id < ?"
 		likeParams = append(likeParams, *req.Pagination.LastID)
@@ -71,14 +85,26 @@ func Search(db *sqlx.DB, req *form.SearchRequest) ([]model.TweetsWithName, int, 
 	return result, total, nil
 }
 
-func Latest(db *sqlx.DB, lastID *string) ([]model.TweetsWithName, error) {
+func Latest(db *sqlx.DB, lastID *string, filter form.TweetTypeFilter) ([]model.TweetsWithName, error) {
 	var params []interface{}
-	q := "SELECT t.*, u.name FROM tweets t left join users u on t.user_id = u.id"
+	var conds []string
+
 	if lastID != nil {
-		q += " WHERE id < ?"
+		conds = append(conds, "id < ?")
 		params = append(params, *lastID)
 	}
+
+	typeCond := BuildTypeFilterSQL(filter)
+	if typeCond != "" {
+		conds = append(conds, typeCond)
+	}
+
+	q := "SELECT t.*, u.name FROM tweets t left join users u on t.user_id = u.id"
+	if len(conds) > 0 {
+		q += " WHERE " + strings.Join(conds, " AND ")
+	}
 	q += " order by id desc limit 100"
+
 	var result []model.TweetsWithName
 	if err := db.Select(&result, q, params...); err != nil {
 		return nil, err
@@ -86,11 +112,20 @@ func Latest(db *sqlx.DB, lastID *string) ([]model.TweetsWithName, error) {
 	return result, nil
 }
 
-func FindByDates(db *sqlx.DB, date string) ([]model.TweetsWithName, error) {
-	q := "SELECT t.*, u.name FROM tweets t left join users u on t.user_id = u.id"
-	q += " WHERE created_date = ? order by id desc limit 100"
+func FindByDates(db *sqlx.DB, date string, filter form.TweetTypeFilter) ([]model.TweetsWithName, error) {
+	var params []interface{}
+	conds := []string{"created_date = ?"}
+	params = append(params, date)
+
+	typeCond := BuildTypeFilterSQL(filter)
+	if typeCond != "" {
+		conds = append(conds, typeCond)
+	}
+
+	q := "SELECT t.*, u.name FROM tweets t left join users u on t.user_id = u.id WHERE " + strings.Join(conds, " AND ") + " order by id desc limit 100"
+
 	var result []model.TweetsWithName
-	if err := db.Select(&result, q, date); err != nil {
+	if err := db.Select(&result, q, params...); err != nil {
 		return nil, err
 	}
 	return result, nil

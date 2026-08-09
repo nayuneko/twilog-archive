@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import type { TweetResponse } from '../types/tweet';
 import type { CalendarData } from '../types/calendar';
 import { getAdjacentDates } from '../utils/calendar';
@@ -21,13 +21,14 @@ const DateNavigator: React.FC<DateNavigatorProps> = ({ prevDate, nextDate }) => 
         {nextDate ? (
             <Link to={`/dates/${nextDate}`} className="text-blue-500 hover:underline pr-1.5">翌日＞</Link>
         ) : (
-            <span className="text-gray-400 pr-1.5 cursor-not-allowed">翌日＞</span>
+            <span className="text-gray-400 pl-1.5 cursor-not-allowed">翌日＞</span>
         )}
     </div>
 );
 
 function DatePage() {
     const { date } = useParams();
+    const [searchParams] = useSearchParams();
     const [tweets, setTweets] = useState<TweetResponse[]>([]);
     const [calendarData, setCalendarData] = useState<CalendarData>({});
     const [loading, setLoading] = useState(true);
@@ -42,7 +43,8 @@ function DatePage() {
     useEffect(() => {
         if (!date) return;
         setLoading(true);
-        fetch(`/api/tweets/dates/${date}`)
+        const searchStr = searchParams.toString();
+        fetch(`/api/tweets/dates/${date}${searchStr ? '?' + searchStr : ''}`)
             .then((res) => res.json())
             .then((data) => {
                 setTweets(data);
@@ -52,7 +54,7 @@ function DatePage() {
                 console.error('Error fetching tweets:', err);
                 setLoading(false);
             });
-    }, [date]);
+    }, [date, searchParams]);
 
     const { prevDate, nextDate } = getAdjacentDates(calendarData, date || '');
 

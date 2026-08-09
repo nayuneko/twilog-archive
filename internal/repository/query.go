@@ -3,7 +3,34 @@ package repository
 import (
 	"regexp"
 	"strings"
+	"twilog-archive/internal/form"
 )
+
+// BuildTypeFilterSQL は TweetTypeFilter から SQL WHERE 条件節を生成する
+func BuildTypeFilterSQL(filter form.TweetTypeFilter) string {
+	// 全て true または全て false（ゼロ値）の場合は絞り込みなし
+	if (filter.IncludeNormal && filter.IncludeReply && filter.IncludeRT) ||
+		(!filter.IncludeNormal && !filter.IncludeReply && !filter.IncludeRT) {
+		return ""
+	}
+
+	var conds []string
+	if filter.IncludeNormal {
+		conds = append(conds, "(t.retweeted = 0 AND t.replied = 0)")
+	}
+	if filter.IncludeReply {
+		conds = append(conds, "t.replied = 1")
+	}
+	if filter.IncludeRT {
+		conds = append(conds, "t.retweeted = 1")
+	}
+
+	if len(conds) == 0 {
+		return "1 = 0"
+	}
+
+	return "(" + strings.Join(conds, " OR ") + ")"
+}
 
 type parsedToken struct {
 	text    string

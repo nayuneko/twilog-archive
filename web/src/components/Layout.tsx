@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import Calendar from './Calendar';
 
 type Props = {
@@ -11,10 +11,25 @@ type Props = {
 };
 
 const Layout: React.FC<Props> = ({ children, date, query = '', excludeQuery = '', searchType: initialSearchType = 'and' }) => {
+    const [searchParams] = useSearchParams();
+    const navigate = useNavigate();
+
     const [searchQuery, setSearchQuery] = useState(query);
     const [excludeWord, setExcludeWord] = useState(excludeQuery);
     const [searchType, setSearchType] = useState<'and' | 'or'>(initialSearchType);
-    const navigate = useNavigate();
+
+    const [includeNormal, setIncludeNormal] = useState<boolean>(() => {
+        const val = searchParams.get('normal');
+        return val === null ? true : val === '1' || val === 'true';
+    });
+    const [includeReply, setIncludeReply] = useState<boolean>(() => {
+        const val = searchParams.get('reply');
+        return val === null ? true : val === '1' || val === 'true';
+    });
+    const [includeRT, setIncludeRT] = useState<boolean>(() => {
+        const val = searchParams.get('rt');
+        return val === null ? true : val === '1' || val === 'true';
+    });
 
     useEffect(() => {
         setSearchQuery(query);
@@ -28,6 +43,26 @@ const Layout: React.FC<Props> = ({ children, date, query = '', excludeQuery = ''
         setSearchType(initialSearchType);
     }, [initialSearchType]);
 
+    useEffect(() => {
+        const valNormal = searchParams.get('normal');
+        setIncludeNormal(valNormal === null ? true : valNormal === '1' || valNormal === 'true');
+        const valReply = searchParams.get('reply');
+        setIncludeReply(valReply === null ? true : valReply === '1' || valReply === 'true');
+        const valRT = searchParams.get('rt');
+        setIncludeRT(valRT === null ? true : valRT === '1' || valRT === 'true');
+    }, [searchParams]);
+
+    const updateFilterParams = (normal: boolean, reply: boolean, rt: boolean) => {
+        const currentParams = new URLSearchParams(window.location.search);
+        if (!normal) currentParams.set('normal', '0'); else currentParams.delete('normal');
+        if (!reply) currentParams.set('reply', '0'); else currentParams.delete('reply');
+        if (!rt) currentParams.set('rt', '0'); else currentParams.delete('rt');
+
+        const searchStr = currentParams.toString();
+        const targetPath = window.location.pathname + (searchStr ? `?${searchStr}` : '');
+        navigate(targetPath);
+    };
+
     const handleSearchSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (searchQuery.trim() || excludeWord.trim()) {
@@ -35,6 +70,9 @@ const Layout: React.FC<Props> = ({ children, date, query = '', excludeQuery = ''
             if (searchQuery.trim()) params.set('q', searchQuery.trim());
             if (excludeWord.trim()) params.set('not', excludeWord.trim());
             params.set('type', searchType);
+            if (!includeNormal) params.set('normal', '0');
+            if (!includeReply) params.set('reply', '0');
+            if (!includeRT) params.set('rt', '0');
             navigate(`/search?${params.toString()}`);
         }
     };
@@ -54,9 +92,36 @@ const Layout: React.FC<Props> = ({ children, date, query = '', excludeQuery = ''
                     <div className="rounded-sm bg-white w-full p-[10px]">
                         <div className="text-sm text-gray-700 mb-1">並び順：新→古 | <span className="text-gray-400">古→新</span></div>
                         <div className="text-sm">
-                            <label className="mr-2"><input type="checkbox" defaultChecked readOnly /> 通常</label>
-                            <label className="mr-2"><input type="checkbox" defaultChecked readOnly /> Reply</label>
-                            <label><input type="checkbox" defaultChecked readOnly /> Retweet</label>
+                            <label className="mr-2 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={includeNormal}
+                                    onChange={(e) => {
+                                        setIncludeNormal(e.target.checked);
+                                        updateFilterParams(e.target.checked, includeReply, includeRT);
+                                    }}
+                                /> 通常
+                            </label>
+                            <label className="mr-2 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={includeReply}
+                                    onChange={(e) => {
+                                        setIncludeReply(e.target.checked);
+                                        updateFilterParams(includeNormal, e.target.checked, includeRT);
+                                    }}
+                                /> Reply
+                            </label>
+                            <label className="cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={includeRT}
+                                    onChange={(e) => {
+                                        setIncludeRT(e.target.checked);
+                                        updateFilterParams(includeNormal, includeReply, e.target.checked);
+                                    }}
+                                /> Retweet
+                            </label>
                         </div>
                     </div>
                     <div className="rounded-sm bg-white w-full p-[10px]">

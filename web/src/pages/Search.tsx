@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { TweetResponse } from '../types/tweet'
+import type { TweetResponse } from '../types/tweet';
 import Layout from '../components/Layout';
 import TweetList from '../components/TweetList';
 import { useSearchParams } from 'react-router-dom';
@@ -23,12 +23,8 @@ function Search() {
                 return;
             }
             setLoading(true);
-            const params = new URLSearchParams();
-            if (query) params.set('q', query);
-            if (notQuery) params.set('not', notQuery);
-            params.set('type', type);
-
-            fetch(`/api/tweets/search/?${params.toString()}`)
+            const searchStr = searchParams.toString();
+            fetch(`/api/tweets/search/?${searchStr}`)
                 .then((res) => res.json())
                 .then((data) => {
                     if (data && Array.isArray(data.tweets)) {
@@ -46,7 +42,7 @@ function Search() {
                 });
         };
         fetchResults();
-    }, [query, notQuery, type]);
+    }, [searchParams, query, notQuery]);
 
     return (
         <Layout query={query} excludeQuery={notQuery} searchType={type}>

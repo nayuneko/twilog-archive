@@ -96,8 +96,10 @@ func TestRepositorySearchAndFindByDates(t *testing.T) {
 		}
 	})
 
+	defaultFilter := form.TweetTypeFilter{IncludeNormal: true, IncludeReply: true, IncludeRT: true}
+
 	t.Run("FindByDates", func(t *testing.T) {
-		results, err := repository.FindByDates(db, "20230801")
+		results, err := repository.FindByDates(db, "20230801", defaultFilter)
 		if err != nil {
 			t.Fatalf("FindByDates failed: %v", err)
 		}
@@ -107,7 +109,7 @@ func TestRepositorySearchAndFindByDates(t *testing.T) {
 	})
 
 	t.Run("Latest", func(t *testing.T) {
-		results, err := repository.Latest(db, nil)
+		results, err := repository.Latest(db, nil, defaultFilter)
 		if err != nil {
 			t.Fatalf("Latest failed: %v", err)
 		}
