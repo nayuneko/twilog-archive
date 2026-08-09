@@ -18,7 +18,8 @@ import (
 )
 
 var (
-	re = regexp.MustCompile(`https://x\.com/([^/]+)/status/`)
+	re      = regexp.MustCompile(`https://x\.com/([^/]+)/status/`)
+	reMedia = regexp.MustCompile(`https://(?:x|twitter)\.com/[^/]+/status/\d+/(?:photo|video)/\d+`)
 )
 
 func setupDB(db *sql.DB) error {
@@ -72,7 +73,7 @@ func main() {
 	}
 	defer tx.Rollback()
 
-	q := `INSERT INTO tweets (id, created_at, created_date, screen_name, full_text, retweeted, log_type) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET screen_name = excluded.screen_name, retweeted = excluded.retweeted`
+	q := `INSERT INTO tweets (id, created_at, created_date, screen_name, full_text, retweeted, log_type, embed_media_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET screen_name = excluded.screen_name, retweeted = excluded.retweeted, embed_media_url = excluded.embed_media_url`
 	stmt, err := tx.Prepare(q)
 	if err != nil {
 		log.Fatalf("ステートメント作成失敗: %v", err)
@@ -134,6 +135,14 @@ func main() {
 		}
 		retweeted := screenName != config.MyScreenName
 
+		var embedMediaURL *string
+		if matches := reMedia.FindAllString(text, -1); len(matches) > 0 {
+			lastMatch := matches[len(matches)-1]
+			if strings.HasSuffix(strings.TrimSpace(text), lastMatch) {
+				embedMediaURL = &lastMatch
+			}
+		}
+
 		createdDate := createdAt.In(time.Local).Format("20060102")
 
 		_, err = stmt.Exec(
@@ -144,6 +153,7 @@ func main() {
 			text,
 			retweeted,
 			model.LogTypeTwilog,
+			embedMediaURL,
 		)
 		if err != nil {
 			log.Printf("INSERT失敗: id=%d: %v", id, err)
