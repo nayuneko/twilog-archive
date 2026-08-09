@@ -26,6 +26,9 @@ bin/import-twilog: cmd/import-twilog/main.go
 bin/mcp-server: cmd/mcp-server/main.go
 	$(GO_BUILD) -o $@ $^
 
+bin/fix-unescape: cmd/fix-unescape/main.go
+	$(GO_BUILD) -o $@ $^
+
 chat-gemini: bin/mcp-server
 	python3 tools/chat_gemini.py
 

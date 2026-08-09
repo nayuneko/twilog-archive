@@ -2,5 +2,6 @@
 .idea/
 data/*
 !data/csv/
+data/csv/*.csv
 bin/
 claude_desktop_config.json
