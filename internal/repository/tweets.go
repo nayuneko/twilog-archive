@@ -8,14 +8,22 @@ import (
 	"twilog-archive/internal/model"
 )
 
-func Search(db *sqlx.DB, req *form.SearchRequest) ([]model.TweetsWithName, error) {
+func Search(db *sqlx.DB, req *form.SearchRequest) ([]model.TweetsWithName, int, error) {
 	word := strings.TrimSpace(req.SearchWord)
 	if word == "" {
-		return nil, nil
+		return nil, 0, nil
 	}
 
 	// 1. FTS5 Trigram MATCH 検索
-	ftsQuery := "\"" + strings.ReplaceAll(word, "\"", "\"\"") + "\""
+	ftsQuery := BuildFTSQuery(word, req.SearchType)
+	if ftsQuery == "" {
+		return nil, 0, nil
+	}
+
+	var total int
+	qCountFTS := `SELECT COUNT(*) FROM tweets_fts WHERE tweets_fts MATCH ?`
+	_ = db.Get(&total, qCountFTS, ftsQuery)
+
 	qFTS := `SELECT t.*, u.name 
 	         FROM tweets t 
 	         JOIN tweets_fts f ON t.id = f.rowid 
@@ -32,28 +40,35 @@ func Search(db *sqlx.DB, req *form.SearchRequest) ([]model.TweetsWithName, error
 	var result []model.TweetsWithName
 	err := db.Select(&result, qFTS, paramsFTS...)
 	if err == nil {
-		return result, nil
+		return result, total, nil
 	}
 
 	// テーブル不在 / FTS5未サポートの場合のみ LIKE 検索にフォールバック
 	errMsg := err.Error()
 	if !strings.Contains(errMsg, "no such table") && !strings.Contains(errMsg, "fts5") {
-		return nil, err
+		return nil, 0, err
 	}
 
 	// 2. フォールバック: 通常の LIKE 検索
-	paramsLIKE := []interface{}{"%" + word + "%"}
-	qLIKE := "SELECT t.*, u.name FROM tweets t LEFT JOIN users u ON t.user_id = u.id WHERE full_text LIKE ?"
+	likeCond, likeParams := BuildLikeQuery(word, req.SearchType)
+	if likeCond == "" {
+		return nil, 0, nil
+	}
+
+	qCountLIKE := "SELECT COUNT(*) FROM tweets t WHERE " + likeCond
+	_ = db.Get(&total, qCountLIKE, likeParams...)
+
+	qLIKE := "SELECT t.*, u.name FROM tweets t LEFT JOIN users u ON t.user_id = u.id WHERE " + likeCond
 	if req.Pagination.LastID != nil {
 		qLIKE += " AND t.id < ?"
-		paramsLIKE = append(paramsLIKE, *req.Pagination.LastID)
+		likeParams = append(likeParams, *req.Pagination.LastID)
 	}
 	qLIKE += " ORDER BY t.id DESC LIMIT 50"
 
-	if err := db.Select(&result, qLIKE, paramsLIKE...); err != nil {
-		return nil, err
+	if err := db.Select(&result, qLIKE, likeParams...); err != nil {
+		return nil, 0, err
 	}
-	return result, nil
+	return result, total, nil
 }
 
 func Latest(db *sqlx.DB, lastID *string) ([]model.TweetsWithName, error) {

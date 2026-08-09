@@ -63,7 +63,7 @@ func main() {
 		req := &form.SearchRequest{
 			SearchWord: query,
 		}
-		tweets, err := repository.Search(db, req)
+		tweets, _, err := repository.Search(db, req)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("DB検索エラー: %v", err)), nil
 		}

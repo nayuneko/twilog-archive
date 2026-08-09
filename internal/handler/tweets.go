@@ -75,10 +75,12 @@ func TweetsDates(db *sqlx.DB) echo.HandlerFunc {
 func TweetsSearch(db *sqlx.DB) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		q := c.QueryParam("q")
+		searchType := c.QueryParam("type")
 		req := &form.SearchRequest{
 			SearchWord: q,
+			SearchType: searchType,
 		}
-		tweets, err := repository.Search(db, req)
+		tweets, totalCount, err := repository.Search(db, req)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, "Search failed: "+err.Error())
 		}
@@ -86,7 +88,10 @@ func TweetsSearch(db *sqlx.DB) echo.HandlerFunc {
 		if err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, "Failed to format response: "+err.Error())
 		}
-		return c.JSON(http.StatusOK, res)
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"total_count": totalCount,
+			"tweets":      res,
+		})
 	}
 }
 

@@ -6,16 +6,18 @@ type Props = {
     children: React.ReactNode;
     date?: string;
     query?: string;
+    searchType?: 'and' | 'or';
 };
 
-const Layout: React.FC<Props> = ({ children, date, query = '' }) => {
+const Layout: React.FC<Props> = ({ children, date, query = '', searchType: initialSearchType = 'and' }) => {
     const [searchQuery, setSearchQuery] = useState(query);
+    const [searchType, setSearchType] = useState<'and' | 'or'>(initialSearchType);
     const navigate = useNavigate();
 
     const handleSearchSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (searchQuery.trim()) {
-            navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+            navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}&type=${searchType}`);
         }
     };
 
@@ -49,11 +51,23 @@ const Layout: React.FC<Props> = ({ children, date, query = '' }) => {
                                 className="w-full border p-[3px] rounded-sm focus:outline-none focus:ring-1 focus:ring-black"
                             />
                             <div className="pt-1.5 text-center text-xs text-gray-600">
-                                <label className="pr-2">
-                                    <input type="radio" name="search_type" defaultChecked readOnly /> AND検索
+                                <label className="pr-2 cursor-pointer">
+                                    <input
+                                        type="radio"
+                                        name="search_type"
+                                        value="and"
+                                        checked={searchType === 'and'}
+                                        onChange={() => setSearchType('and')}
+                                    /> AND検索
                                 </label>
-                                <label>
-                                    <input type="radio" name="search_type" disabled /> OR検索
+                                <label className="cursor-pointer">
+                                    <input
+                                        type="radio"
+                                        name="search_type"
+                                        value="or"
+                                        checked={searchType === 'or'}
+                                        onChange={() => setSearchType('or')}
+                                    /> OR検索
                                 </label>
                             </div>
                         </form>
