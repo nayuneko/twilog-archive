@@ -81,9 +81,12 @@ func TestRepositorySearchAndFindByDates(t *testing.T) {
 
 	t.Run("Search Keyword Hit", func(t *testing.T) {
 		req := &form.SearchRequest{SearchWord: "ラーメン"}
-		results, err := repository.Search(db, req)
+		results, totalCount, err := repository.Search(db, req)
 		if err != nil {
 			t.Fatalf("Search failed: %v", err)
+		}
+		if totalCount != 1 {
+			t.Errorf("got totalCount %d, want 1", totalCount)
 		}
 		if len(results) != 1 {
 			t.Fatalf("got %d tweets, want 1", len(results))
@@ -93,8 +96,10 @@ func TestRepositorySearchAndFindByDates(t *testing.T) {
 		}
 	})
 
+	defaultFilter := form.TweetTypeFilter{IncludeNormal: true, IncludeReply: true, IncludeRT: true}
+
 	t.Run("FindByDates", func(t *testing.T) {
-		results, err := repository.FindByDates(db, "20230801")
+		results, err := repository.FindByDates(db, "20230801", defaultFilter)
 		if err != nil {
 			t.Fatalf("FindByDates failed: %v", err)
 		}
@@ -104,7 +109,7 @@ func TestRepositorySearchAndFindByDates(t *testing.T) {
 	})
 
 	t.Run("Latest", func(t *testing.T) {
-		results, err := repository.Latest(db, nil)
+		results, err := repository.Latest(db, nil, defaultFilter)
 		if err != nil {
 			t.Fatalf("Latest failed: %v", err)
 		}

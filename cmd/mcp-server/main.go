@@ -63,7 +63,7 @@ func main() {
 		req := &form.SearchRequest{
 			SearchWord: query,
 		}
-		tweets, err := repository.Search(db, req)
+		tweets, _, err := repository.Search(db, req)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("DB検索エラー: %v", err)), nil
 		}
@@ -99,8 +99,9 @@ func main() {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
+		defaultFilter := form.TweetTypeFilter{IncludeNormal: true, IncludeReply: true, IncludeRT: true}
 		cleanDate := strings.ReplaceAll(dateStr, "-", "")
-		tweets, err := repository.FindByDates(db, cleanDate)
+		tweets, err := repository.FindByDates(db, cleanDate, defaultFilter)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("DB取得エラー: %v", err)), nil
 		}
@@ -130,7 +131,8 @@ func main() {
 		mcp.WithDescription("最新の過去ツイート一覧を取得します"),
 	)
 	s.AddTool(latestTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		tweets, err := repository.Latest(db, nil)
+		defaultFilter := form.TweetTypeFilter{IncludeNormal: true, IncludeReply: true, IncludeRT: true}
+		tweets, err := repository.Latest(db, nil, defaultFilter)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("DB取得エラー: %v", err)), nil
 		}

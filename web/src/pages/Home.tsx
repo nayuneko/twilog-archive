@@ -1,15 +1,19 @@
 import { useEffect, useState } from 'react';
-import type { TweetResponse } from '../types/tweet'
+import type { TweetResponse } from '../types/tweet';
 import Layout from '../components/Layout';
 import TweetList from '../components/TweetList';
+import { useSearchParams } from 'react-router-dom';
 
 function Home() {
+    const [searchParams] = useSearchParams();
     const [tweets, setTweets] = useState<TweetResponse[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetch('/api/tweets/latest')
-            .then((res) =>  res.json() )
+        setLoading(true);
+        const searchStr = searchParams.toString();
+        fetch(`/api/tweets/latest${searchStr ? '?' + searchStr : ''}`)
+            .then((res) => res.json())
             .then((data) => {
                 setTweets(data);
                 setLoading(false);
@@ -18,7 +22,7 @@ function Home() {
                 console.error('Error fetching tweets:', err);
                 setLoading(false);
             });
-    }, []);
+    }, [searchParams]);
 
     return (
         <Layout>
@@ -30,7 +34,7 @@ function Home() {
                 </>
             )}
         </Layout>
-    )
+    );
 }
 
 export default Home;
