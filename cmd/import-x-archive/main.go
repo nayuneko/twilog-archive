@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"compress/gzip"
 	"database/sql"
 	"encoding/csv"
 	"encoding/json"
@@ -380,7 +381,17 @@ func updateTwilogDate(db *sqlx.DB) error {
 	}
 	defer f.Close()
 
-	reader := csv.NewReader(f)
+	var csvReader io.Reader = f
+	if strings.HasSuffix(csvPath, ".gz") {
+		gzr, err := gzip.NewReader(f)
+		if err != nil {
+			return fmt.Errorf("GZIPオープン失敗: %w", err)
+		}
+		defer gzr.Close()
+		csvReader = gzr
+	}
+
+	reader := csv.NewReader(csvReader)
 	reader.LazyQuotes = true
 	reader.FieldsPerRecord = -1
 

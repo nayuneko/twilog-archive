@@ -1,6 +1,7 @@
 package main
 
 import (
+	"compress/gzip"
 	"database/sql"
 	"encoding/csv"
 	"fmt"
@@ -60,7 +61,17 @@ func main() {
 	}
 	defer f.Close()
 
-	reader := csv.NewReader(f)
+	var csvReader io.Reader = f
+	if strings.HasSuffix(csvPath, ".gz") {
+		gzr, err := gzip.NewReader(f)
+		if err != nil {
+			log.Fatalf("GZIPオープン失敗: %v", err)
+		}
+		defer gzr.Close()
+		csvReader = gzr
+	}
+
+	reader := csv.NewReader(csvReader)
 	reader.LazyQuotes = true
 	reader.FieldsPerRecord = -1 // 可変長レコード対応
 
