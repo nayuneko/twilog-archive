@@ -89,39 +89,54 @@ const Layout: React.FC<Props> = ({ children, date, query = '', excludeQuery = ''
             <div className="mx-auto w-[970px] flex min-h-screen">
                 <main className="w-[640px] p-4">{children}</main>
                 <aside className="w-[330px] flex-1 bg-gray-100 p-4 space-y-4">
-                    <div className="rounded-sm bg-white w-full p-[10px]">
-                        <div className="text-sm text-gray-700 mb-1">並び順：新→古 | <span className="text-gray-400">古→新</span></div>
-                        <div className="text-sm">
-                            <label className="mr-2 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={includeNormal}
-                                    onChange={(e) => {
-                                        setIncludeNormal(e.target.checked);
-                                        updateFilterParams(e.target.checked, includeReply, includeRT);
-                                    }}
-                                /> 通常
-                            </label>
-                            <label className="mr-2 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={includeReply}
-                                    onChange={(e) => {
-                                        setIncludeReply(e.target.checked);
-                                        updateFilterParams(includeNormal, e.target.checked, includeRT);
-                                    }}
-                                /> Reply
-                            </label>
-                            <label className="cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={includeRT}
-                                    onChange={(e) => {
-                                        setIncludeRT(e.target.checked);
-                                        updateFilterParams(includeNormal, includeReply, e.target.checked);
-                                    }}
-                                /> Retweet
-                            </label>
+                    <div className="rounded-sm bg-white w-full p-3 border border-gray-200/80">
+                        <div className="text-xs font-bold text-gray-500 mb-2 tracking-wide uppercase">表示対象</div>
+                        <div className="flex items-center space-x-1.5">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const next = !includeNormal;
+                                    setIncludeNormal(next);
+                                    updateFilterParams(next, includeReply, includeRT);
+                                }}
+                                className={`flex-1 py-1.5 text-xs rounded border transition-all cursor-pointer text-center font-medium ${
+                                    includeNormal
+                                        ? 'bg-gray-900 text-white border-gray-900 shadow-xs'
+                                        : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100 hover:text-gray-600'
+                                }`}
+                            >
+                                ツイート
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const next = !includeReply;
+                                    setIncludeReply(next);
+                                    updateFilterParams(includeNormal, next, includeRT);
+                                }}
+                                className={`flex-1 py-1.5 text-xs rounded border transition-all cursor-pointer text-center font-medium ${
+                                    includeReply
+                                        ? 'bg-gray-900 text-white border-gray-900 shadow-xs'
+                                        : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100 hover:text-gray-600'
+                                }`}
+                            >
+                                Reply
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const next = !includeRT;
+                                    setIncludeRT(next);
+                                    updateFilterParams(includeNormal, includeReply, next);
+                                }}
+                                className={`flex-1 py-1.5 text-xs rounded border transition-all cursor-pointer text-center font-medium ${
+                                    includeRT
+                                        ? 'bg-gray-900 text-white border-gray-900 shadow-xs'
+                                        : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100 hover:text-gray-600'
+                                }`}
+                            >
+                                Retweet
+                            </button>
                         </div>
                     </div>
                     <div className="rounded-sm bg-white w-full p-[10px]">
