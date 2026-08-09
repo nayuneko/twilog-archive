@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import Calendar from './Calendar';
 
 type Props = {
@@ -7,37 +8,57 @@ type Props = {
     query?: string;
 };
 
-const Layout: React.FC<Props> = ({ children, date, query }) => {
+const Layout: React.FC<Props> = ({ children, date, query = '' }) => {
+    const [searchQuery, setSearchQuery] = useState(query);
+    const navigate = useNavigate();
+
+    const handleSearchSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (searchQuery.trim()) {
+            navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+        }
+    };
+
     return (
         <>
             <header className="bg-black p-4">
                 <div className="mx-auto w-[970px]">
-                    <h1 className="text-white"><a href="/">𝕏 Log</a></h1>
+                    <h1 className="text-white font-bold text-xl">
+                        <Link to="/" className="hover:opacity-80 transition-opacity">𝕏 Log</Link>
+                    </h1>
                 </div>
             </header>
-            <div className="mx-auto w-[970px] flex">
+            <div className="mx-auto w-[970px] flex min-h-screen">
                 <main className="w-[640px] p-4">{children}</main>
-                <aside className="w-[330px] flex-1 bg-gray-100 p-4">
+                <aside className="w-[330px] flex-1 bg-gray-100 p-4 space-y-4">
                     <div className="rounded-sm bg-white w-full p-[10px]">
-                        <div>並び順：新→古 | <a href="#">古→新</a></div>
-                        <div>
-                            <input type="checkbox" checked/>通常&nbsp;
-                            <input type="checkbox" checked/>Reply&nbsp;
-                            <input type="checkbox" checked/>Retweet
+                        <div className="text-sm text-gray-700 mb-1">並び順：新→古 | <span className="text-gray-400">古→新</span></div>
+                        <div className="text-sm">
+                            <label className="mr-2"><input type="checkbox" defaultChecked readOnly /> 通常</label>
+                            <label className="mr-2"><input type="checkbox" defaultChecked readOnly /> Reply</label>
+                            <label><input type="checkbox" defaultChecked readOnly /> Retweet</label>
                         </div>
                     </div>
                     <div className="rounded-sm bg-white w-full p-[10px]">
-                        <form method="GET" action="/search">
-                            <input type="text" name="q" defaultValue={query} placeholder="検索"
-                                   className="w-full border p-[3px] rounded-sm"/>
-                            <div className=" pt-1.5 text-center">
-                                <span className="pr-1.5"><input type="radio" name="search_type"
-                                                                checked/>&nbsp;AND検索</span>
-                                <input type="radio" name="search_type"/>&nbsp;OR検索
+                        <form onSubmit={handleSearchSubmit}>
+                            <input
+                                type="text"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="検索"
+                                className="w-full border p-[3px] rounded-sm focus:outline-none focus:ring-1 focus:ring-black"
+                            />
+                            <div className="pt-1.5 text-center text-xs text-gray-600">
+                                <label className="pr-2">
+                                    <input type="radio" name="search_type" defaultChecked readOnly /> AND検索
+                                </label>
+                                <label>
+                                    <input type="radio" name="search_type" disabled /> OR検索
+                                </label>
                             </div>
                         </form>
                     </div>
-                    <div className="mt-4 bg-white p-[15px]">
+                    <div className="bg-white p-[15px] rounded-sm">
                         <Calendar date={date}/>
                     </div>
                 </aside>
