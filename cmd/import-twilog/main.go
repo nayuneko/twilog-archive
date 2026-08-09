@@ -111,7 +111,7 @@ func main() {
 		logType := record[4]
 
 		// ログタイプは1:ツイート(RT含む)、2:いいね、3:ブックマーク
-		if logType != "1" {
+		if logType != model.TwilogLogTypeTweet {
 			skippedCount++
 			continue
 		}
