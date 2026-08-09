@@ -73,7 +73,13 @@ func main() {
 	}
 	defer tx.Rollback()
 
-	q := `INSERT INTO tweets (id, created_at, created_date, screen_name, full_text, retweeted, log_type, embed_media_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET screen_name = excluded.screen_name, retweeted = excluded.retweeted, embed_media_url = excluded.embed_media_url`
+	userStmt, err := db.Prepare("SELECT id FROM users WHERE screen_name = ? LIMIT 1")
+	if err != nil {
+		log.Fatalf("ユーザー検索ステートメント作成失敗: %v", err)
+	}
+	defer userStmt.Close()
+
+	q := `INSERT INTO tweets (id, created_at, created_date, screen_name, full_text, retweeted, log_type, user_id, embed_media_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET full_text = CASE WHEN length(excluded.full_text) > length(tweets.full_text) THEN excluded.full_text ELSE tweets.full_text END, screen_name = excluded.screen_name, retweeted = excluded.retweeted, embed_media_url = COALESCE(excluded.embed_media_url, tweets.embed_media_url), user_id = COALESCE(tweets.user_id, excluded.user_id)`
 	stmt, err := tx.Prepare(q)
 	if err != nil {
 		log.Fatalf("ステートメント作成失敗: %v", err)
@@ -135,6 +141,12 @@ func main() {
 		}
 		retweeted := screenName != config.MyScreenName
 
+		var userID *int64
+		var userRowID int64
+		if err := userStmt.QueryRow(screenName).Scan(&userRowID); err == nil {
+			userID = &userRowID
+		}
+
 		var embedMediaURL *string
 		if matches := reMedia.FindAllString(text, -1); len(matches) > 0 {
 			lastMatch := matches[len(matches)-1]
@@ -153,6 +165,7 @@ func main() {
 			text,
 			retweeted,
 			model.LogTypeTwilog,
+			userID,
 			embedMediaURL,
 		)
 		if err != nil {
