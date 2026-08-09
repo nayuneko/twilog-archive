@@ -1,13 +1,43 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import type { TweetResponse } from '../types/tweet';
+import type { CalendarData } from '../types/calendar';
+import { getAdjacentDates } from '../utils/calendar';
 import Layout from "../components/Layout";
 import TweetList from "../components/TweetList";
+
+interface DateNavigatorProps {
+    prevDate: string | null;
+    nextDate: string | null;
+}
+
+const DateNavigator: React.FC<DateNavigatorProps> = ({ prevDate, nextDate }) => (
+    <div className="flex justify-between items-center w-full my-4">
+        {prevDate ? (
+            <Link to={`/dates/${prevDate}`} className="text-blue-500 hover:underline pl-1.5">＜前日</Link>
+        ) : (
+            <span className="text-gray-400 pl-1.5 cursor-not-allowed">＜前日</span>
+        )}
+        {nextDate ? (
+            <Link to={`/dates/${nextDate}`} className="text-blue-500 hover:underline pr-1.5">翌日＞</Link>
+        ) : (
+            <span className="text-gray-400 pr-1.5 cursor-not-allowed">翌日＞</span>
+        )}
+    </div>
+);
 
 function DatePage() {
     const { date } = useParams();
     const [tweets, setTweets] = useState<TweetResponse[]>([]);
+    const [calendarData, setCalendarData] = useState<CalendarData>({});
     const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        fetch('/api/calendar')
+            .then((res) => res.json())
+            .then((data) => setCalendarData(data))
+            .catch((err) => console.error('Error fetching calendar:', err));
+    }, []);
 
     useEffect(() => {
         if (!date) return;
@@ -24,32 +54,7 @@ function DatePage() {
             });
     }, [date]);
 
-    const y = parseInt(date?.slice(0, 4) || '2000', 10);
-    const m = parseInt(date?.slice(4, 6) || '01', 10) - 1;
-    const d = parseInt(date?.slice(6, 8) || '01', 10);
-    const baseDate = new Date(y, m, d);
-
-    // 前日
-    const prevDate = new Date(baseDate);
-    prevDate.setDate(baseDate.getDate() - 1);
-
-    // 翌日
-    const nextDate = new Date(baseDate);
-    nextDate.setDate(baseDate.getDate() + 1);
-
-    const formatToYYYYMMDD = (dt: Date) => {
-        const yyyy = dt.getFullYear();
-        const mm = String(dt.getMonth() + 1).padStart(2, '0');
-        const dd = String(dt.getDate()).padStart(2, '0');
-        return `${yyyy}${mm}${dd}`;
-    };
-
-    const DateNavigator = () => (
-        <div className="flex justify-between items-center w-full my-4">
-            <Link to={`/dates/${formatToYYYYMMDD(prevDate)}`} className="text-blue-500 hover:underline pl-1.5">＜前日</Link>
-            <Link to={`/dates/${formatToYYYYMMDD(nextDate)}`} className="text-blue-500 hover:underline pr-1.5">翌日＞</Link>
-        </div>
-    );
+    const { prevDate, nextDate } = getAdjacentDates(calendarData, date || '');
 
     return (
         <Layout date={date}>
@@ -57,14 +62,14 @@ function DatePage() {
                 <p>読み込み中...</p>
             ) : (
                 <>
-                    <DateNavigator/>
+                    <DateNavigator prevDate={prevDate} nextDate={nextDate} />
                     <TweetList tweets={tweets}/>
-                    <DateNavigator/>
+                    <DateNavigator prevDate={prevDate} nextDate={nextDate} />
                 </>
             )
             }
         </Layout>
-    )
+    );
 }
 
 export default DatePage;
