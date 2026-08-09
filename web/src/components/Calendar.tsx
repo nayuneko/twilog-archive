@@ -114,11 +114,11 @@ const Calendar: React.FC<CalendarProps> = ({ date }) => {
         const ymd = `${year}${String(month).padStart(2, '0')}${String(d).padStart(2, '0')}`;
 
         const cell = tweetExists ? (
-            <td key={d} className="text-blue-600 underline font-medium">
+            <td key={d} className="py-1 text-xs sm:text-sm text-blue-600 underline font-medium">
                 <Link to={`/dates/${ymd}`}>{d}</Link>
             </td>
         ) : (
-            <td key={d} className="text-gray-700">{d}</td>
+            <td key={d} className="py-1 text-xs sm:text-sm text-gray-700">{d}</td>
         );
         cells.push(cell);
 
@@ -129,24 +129,24 @@ const Calendar: React.FC<CalendarProps> = ({ date }) => {
     }
 
     return (
-        <div className="mt-4">
+        <div className="mt-2 sm:mt-4">
             <div className="flex justify-between items-center mb-2">
                 <button
                     onClick={goToPrevMonth}
                     disabled={isPrevMonthDisabled}
-                    className={`px-3 py-1 rounded transition-colors ${
+                    className={`px-3 py-1 rounded text-sm transition-colors cursor-pointer ${
                         isPrevMonthDisabled
                             ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                             : 'bg-gray-200 hover:bg-gray-300'
                     }`}
                 >＜</button>
-                <h2 className="text-lg font-semibold">
+                <h2 className="text-base sm:text-lg font-semibold">
                     {year}年{month}月
                 </h2>
                 <button
                     onClick={goToNextMonth}
                     disabled={isNextMonthDisabled}
-                    className={`px-3 py-1 rounded transition-colors ${
+                    className={`px-3 py-1 rounded text-sm transition-colors cursor-pointer ${
                         isNextMonthDisabled
                             ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                             : 'bg-gray-200 hover:bg-gray-300'
@@ -154,16 +154,16 @@ const Calendar: React.FC<CalendarProps> = ({ date }) => {
                 >＞</button>
             </div>
 
-            <table className="border border-gray-300 w-full text-center">
+            <table className="border border-gray-300 w-full text-center text-xs sm:text-sm">
                 <thead>
                 <tr className="bg-gray-100">
-                    <th className="py-1">日</th>
-                    <th className="py-1">月</th>
-                    <th className="py-1">火</th>
-                    <th className="py-1">水</th>
-                    <th className="py-1">木</th>
-                    <th className="py-1">金</th>
-                    <th className="py-1">土</th>
+                    <th className="py-1 text-xs sm:text-sm font-medium">日</th>
+                    <th className="py-1 text-xs sm:text-sm font-medium">月</th>
+                    <th className="py-1 text-xs sm:text-sm font-medium">火</th>
+                    <th className="py-1 text-xs sm:text-sm font-medium">水</th>
+                    <th className="py-1 text-xs sm:text-sm font-medium">木</th>
+                    <th className="py-1 text-xs sm:text-sm font-medium">金</th>
+                    <th className="py-1 text-xs sm:text-sm font-medium">土</th>
                 </tr>
                 </thead>
                 <tbody>{rows}</tbody>
