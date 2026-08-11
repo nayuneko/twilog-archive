@@ -24,8 +24,10 @@ const TweetCard: React.FC<TweetProps> = ({ tweet }) => {
                 const escapedUrl = escapeHtml(u.url);
                 const escapedExpandedUrl = escapeHtml(u.expanded_url);
                 const escapedDisplayUrl = escapeHtml(u.display_url);
-                safeText = safeText.replaceAll(
-                    escapedUrl,
+                // escapedUrl の直後に付く 「…」 や 「...」 や空白も巻き込んで置換
+                const pattern = new RegExp(escapedUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:[…\\s]|\\.{3})*', 'g');
+                safeText = safeText.replace(
+                    pattern,
                     `<a href="${escapedExpandedUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline">${escapedDisplayUrl}</a>`
                 );
             });
@@ -44,8 +46,11 @@ const TweetCard: React.FC<TweetProps> = ({ tweet }) => {
         }
 
         safeText = safeText.replace(
-            /https:\/\/t\.co\/[a-zA-Z0-9]+/g,
-            (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline">${url}</a>`
+            /https:\/\/t\.co\/[a-zA-Z0-9]+(?:[…\s]|\.{3})*/g,
+            (match) => {
+                const cleanUrl = match.replace(/(?:[…\s]|\.{3})+$/, '');
+                return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-500 hover:underline">${cleanUrl}</a>`;
+            }
         );
 
         return safeText.replace(/\n/g, '<br />');

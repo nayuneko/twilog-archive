@@ -158,7 +158,7 @@ const Layout: React.FC<Props> = ({ children, date, query = '', excludeQuery = ''
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     placeholder="検索キーワード"
-                                    className="w-full border p-[3px] rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-black"
+                                    className="w-full border p-[3px] rounded-sm text-base md:text-sm focus:outline-none focus:ring-1 focus:ring-black"
                                 />
                             </div>
                             <div>
@@ -168,7 +168,7 @@ const Layout: React.FC<Props> = ({ children, date, query = '', excludeQuery = ''
                                     value={excludeWord}
                                     onChange={(e) => setExcludeWord(e.target.value)}
                                     placeholder="除外する単語"
-                                    className="w-full border p-[3px] rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-black bg-gray-50"
+                                    className="w-full border p-[3px] rounded-sm text-base md:text-sm focus:outline-none focus:ring-1 focus:ring-black bg-gray-50"
                                 />
                             </div>
                             <div className="pt-1 text-center text-xs text-gray-600 flex items-center justify-between">
@@ -270,7 +270,7 @@ const Layout: React.FC<Props> = ({ children, date, query = '', excludeQuery = ''
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     placeholder="検索キーワード"
-                                    className="w-full border p-[3px] rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-black"
+                                    className="w-full border p-[3px] rounded-sm text-base md:text-sm focus:outline-none focus:ring-1 focus:ring-black"
                                 />
                             </div>
                             <div>
@@ -280,7 +280,7 @@ const Layout: React.FC<Props> = ({ children, date, query = '', excludeQuery = ''
                                     value={excludeWord}
                                     onChange={(e) => setExcludeWord(e.target.value)}
                                     placeholder="除外する単語"
-                                    className="w-full border p-[3px] rounded-sm text-sm focus:outline-none focus:ring-1 focus:ring-black bg-gray-50"
+                                    className="w-full border p-[3px] rounded-sm text-base md:text-sm focus:outline-none focus:ring-1 focus:ring-black bg-gray-50"
                                 />
                             </div>
                             <div className="pt-1 text-center text-xs text-gray-600 flex items-center justify-between">
