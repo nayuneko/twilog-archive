@@ -1,0 +1,18 @@
+# DBファイルへの直接アクセスを完全ブロック（情報漏洩防止）
+<FilesMatch "\.(db|sqlite|sqlite3)$">
+    Require all denied
+</FilesMatch>
+
+# Apache 標準 Basic 認証 (HTML, JS, API すべてを完全保護)
+AuthType Basic
+AuthName "Twilog Archive Restricted Access"
+AuthUserFile /virtual/atkg3a/public_html/x.nayuneko.jp/.htpasswd
+Require valid-user
+
+# Apache URL Rewrite for Twilog Archive Go CGI on XREA
+RewriteEngine On
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.cgi/$1 [L,QSA]
+
+SetEnv DB_PATH "/virtual/atkg3a/db/tweets.db"
