@@ -634,13 +634,5 @@ func main() {
 		}
 	}
 
-	// 引数なしの場合はデフォルトで JsonDir または TweetsDir からインポート
-	if _, err := os.Stat(config.JsonDir); err == nil {
-		if err := importTweetsFromDir(db, config.JsonDir); err != nil {
-			log.Fatal(err)
-		}
-		return
-	}
-
-	log.Fatal("使い方: import-x-archive <x-archive.zip | データディレクトリ>")
+	log.Fatal("使い方: import-x-archive <x-archive.zip>")
 }
