@@ -45,9 +45,17 @@ extract-archive: bin/extract-archive
 
 import: bin/import-x-archive
 	./bin/import-x-archive $(ZIP)
+	$(MAKE) optimize-db
 
 import-twilog: bin/import-twilog
 	./bin/import-twilog $(CSV)
+	$(MAKE) optimize-db
+
+optimize-db:
+	@echo "===> SQLite DB を最適化中 (WAL統合 & VACUUM & FTS5最適化)..."
+	@sqlite3 data/db/tweets.db "PRAGMA wal_checkpoint(TRUNCATE); VACUUM; INSERT INTO tweets_fts(tweets_fts) VALUES('optimize');"
+	@rm -f data/db/tweets.db-wal data/db/tweets.db-shm
+	@echo "===> DB 最適化が完了しました！"
 
 # --- XREA デプロイ自動化 ---
 XREA_USER ?= atkg3a
@@ -65,7 +73,7 @@ deploy-xrea: build-cgi
 	ssh $(XREA_USER)@$(XREA_HOST) "htpasswd -b -c $(XREA_PATH)/.htpasswd nayuneko nayu1279"
 	@echo "===> アプリケーションのデプロイが完了しました！"
 
-deploy-db-xrea:
+deploy-db-xrea: optimize-db
 	@echo "===> XREA ($(XREA_USER)@$(XREA_HOST):$(XREA_DB_PATH)) [Web非公開エリア] へ tweets.db を安全転送中..."
 	ssh $(XREA_USER)@$(XREA_HOST) "mkdir -p $(XREA_DB_PATH)"
 	scp data/db/tweets.db $(XREA_USER)@$(XREA_HOST):$(XREA_DB_PATH)/tweets.db.tmp
