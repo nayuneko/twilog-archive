@@ -56,8 +56,8 @@ const TweetCard: React.FC<TweetProps> = ({ tweet }) => {
         : `https://x.com/${tweet.screen_name}/status/${tweet.id}`;
 
     return (
-        <div className="border-b border-dashed border-black p-4 bg-white space-y-2 last:border-b-0">
-            <div className="flex items-center gap-2">
+        <div className="border-b border-dashed border-black p-3 sm:p-4 bg-white space-y-2 last:border-b-0 overflow-hidden">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                 {tweet.name ? (
                     <>
                         <span className="font-bold">{tweet.name}</span>
@@ -68,23 +68,23 @@ const TweetCard: React.FC<TweetProps> = ({ tweet }) => {
                 )}
             </div>
             <div
-                className="text-base leading-relaxed"
+                className="text-sm sm:text-base leading-relaxed break-words overflow-wrap-anywhere"
                 dangerouslySetInnerHTML={{ __html: formattedText }}
             />
             {tweet.media && tweet.media.length > 0 && (
-                <div className="flex pt-2 gap-1 overflow-x-auto">
+                <div className="flex pt-2 gap-1.5 overflow-x-auto max-w-full pb-1">
                     {tweet.media.map((url) => (
                         <img
                             key={url}
                             src={`${url}:thumb`}
                             alt="media"
-                            className="rounded-xl max-h-30 object-cover pr-1"
+                            className="rounded-xl max-h-24 sm:max-h-32 object-cover shrink-0"
                         />
                     ))}
                 </div>
             )}
             <MediaEmbed urls={tweet.urls} />
-            <div className="flex items-center gap-2 text-sm text-gray-500">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:text-sm text-gray-500 pt-1">
                 {tweet.retweeted && (
                     <div>🔁 retweeted at</div>
                 )}

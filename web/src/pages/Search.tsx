@@ -51,8 +51,8 @@ function Search() {
             ) : (
                 <>
                     {(query || notQuery) && (
-                        <div className="mb-4 bg-white p-3 rounded-sm text-sm text-gray-700 flex justify-between items-center border border-gray-200">
-                            <div>
+                        <div className="mb-4 bg-white p-3 rounded-sm text-xs sm:text-sm text-gray-700 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-2 border border-gray-200">
+                            <div className="break-words max-w-full">
                                 {query ? (
                                     <span>「<strong className="text-black">{query}</strong>」の検索結果 ({type.toUpperCase()}検索)</span>
                                 ) : (
@@ -61,7 +61,7 @@ function Search() {
                                 {notQuery && <span className="ml-2 text-xs text-red-600 font-medium">[除外: {notQuery}]</span>}
                             </div>
                             {totalCount !== null && (
-                                <div className="text-xs text-gray-600">
+                                <div className="text-xs text-gray-600 shrink-0">
                                     該当件数: <strong className="text-sm text-blue-600 font-bold">{totalCount.toLocaleString()}</strong> 件
                                 </div>
                             )}
